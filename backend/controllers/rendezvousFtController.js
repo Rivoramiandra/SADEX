@@ -318,6 +318,42 @@ exports.getRendezvousById = async (req, res) => {
   }
 };
 
+// @desc    Get full rendezvous data with descente information
+// @route   GET /api/rendezvousft/:id/full
+// @access  Public
+exports.getFullRendezvousData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`🔍 Récupération des données complètes pour le rendez-vous ID: ${id}`);
+    
+    // Utiliser la méthode que vous avez ajoutée dans le modèle
+    const fullData = await RendezvousFt.findFullDataById(id);
+    
+    if (!fullData) {
+      console.log(`❌ Rendez-vous ${id} non trouvé`);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Rendez-vous non trouvé' 
+      });
+    }
+    
+    console.log(`✅ Données complètes récupérées pour le rendez-vous ${id}`);
+    
+    res.json({
+      success: true,
+      data: fullData
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des données complètes:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur serveur lors de la récupération des données',
+      error: error.message 
+    });
+  }
+};
+
 // @desc    Get rendezvous by descente id
 // @route   GET /api/rendezvousft/descente/:idDescente
 // @access  Public
@@ -427,7 +463,79 @@ exports.updateRendezvous = async (req, res) => {
     });
   }
 };
+// @desc    Mettre à jour un rendez-vous pour un mandat
+// @route   PATCH /api/rendezvousft/:id/mandat
+// @access  Public
+exports.updateRdvForMandat = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mandatData = req.body; // Contient date_rendez_vous et heure_rendez_vous
 
+    console.log(`Tentative de mise à jour du mandat pour le rendez-vous ID: ${id}`, mandatData);
+
+    // 1. Récupérer le rendez-vous actuel
+    const rdv = await RendezvousFt.findById(id);
+    if (!rdv) {
+      return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+    }
+
+    // 2. DÉTERMINER LE NOUVEAU STATUT BASÉ SUR LA NOUVELLE DATE
+    const now = new Date();
+    const newDate = new Date(mandatData.date_rendez_vous);
+    
+    // Comparer les dates sans l'heure
+    const newDateOnly = new Date(newDate.getFullYear(), newDate.getMonth(), newDate.getDate());
+    const nowDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    let newStatut = rdv.statut; // Conserver l'ancien statut par défaut
+    
+    // Si la nouvelle date est dans le passé ou aujourd'hui avec heure passée
+    if (newDateOnly < nowDateOnly) {
+      newStatut = 'En cours';
+      console.log('⚠️ Nouvelle date passée détectée, statut automatiquement défini à "En cours"');
+    } else if (newDateOnly.getTime() === nowDateOnly.getTime()) {
+      // Si c'est aujourd'hui, vérifier l'heure
+      const rdvTime = mandatData.heure_rendez_vous || rdv.heure_rendez_vous;
+      const currentTime = now.toTimeString().substring(0, 5);
+      
+      if (rdvTime && rdvTime <= currentTime) {
+        newStatut = 'En cours';
+        console.log('⚠️ Heure passée détectée aujourd\'hui, statut automatiquement défini à "En cours"');
+      } else {
+        newStatut = 'En attente';
+        console.log('⏳ Date/heure future détectée, statut défini à "En attente"');
+      }
+    } else {
+      newStatut = 'En attente';
+      console.log('⏳ Date future détectée, statut défini à "En attente"');
+    }
+
+    // 3. Ajouter le nouveau statut aux données à mettre à jour
+    const dataToUpdate = {
+      ...mandatData,
+      statut: newStatut
+    };
+
+    // 4. Mettre à jour le rendez-vous
+    const updatedRendezvous = await RendezvousFt.update(id, dataToUpdate);
+
+    res.status(200).json({
+      success: true,
+      message: `Mandat mis à jour avec succès. Statut: ${newStatut}`,
+      data: updatedRendezvous,
+      statutMisAJour: true,
+      nouveauStatut: newStatut,
+      ancienStatut: rdv.statut
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la mise à jour du mandat:', error);
+    res.status(500).json({
+      error: 'Erreur lors de la mise à jour du mandat',
+      details: error.message
+    });
+  }
+};
 // @desc    Update rendezvous status
 // @route   PATCH /api/rendezvousft/:id/statut
 // @access  Public

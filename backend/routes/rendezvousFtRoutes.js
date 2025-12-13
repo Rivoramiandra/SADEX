@@ -10,19 +10,22 @@ router.get('/today', rendezvousFtController.getTodayRendezvous);
 router.get('/upcoming', rendezvousFtController.getUpcomingRendezvous);
 router.post('/', rendezvousFtController.createRendezvous);
 
-// Routes avec ID
-// router.get('/:id', rendezvousFtController.getRendezvousById);
+// ROUTES SPÉCIFIQUES DOIVENT ÊTRE AVANT LES ROUTES PARAMÉTRÉES
+router.get('/check-status', rendezvousFtController.checkAndUpdateStatus); // Déplacé ici
+router.get('/check-overdue', rendezvousFtController.checkOverdueRendezvous); // Déplacé ici
+router.get('/detailed-stats', rendezvousFtController.getDetailedStats); // Déplacé ici
+router.get('/descente/:idDescente', rendezvousFtController.getRendezvousByDescenteId);
+
+// Routes avec ID (paramétrées) - DOIVENT ÊTRE APRÈS LES ROUTES SPÉCIFIQUES
+router.get('/:id', rendezvousFtController.getRendezvousById);
 router.put('/:id', rendezvousFtController.updateRendezvous);
 router.delete('/:id', rendezvousFtController.deleteRendezvous);
 
-// Routes spécifiques
-router.get('/descente/:idDescente', rendezvousFtController.getRendezvousByDescenteId);
-router.patch('/:id/statut', rendezvousFtController.updateRendezvousStatut);
-
-// Nouvelles routes pour la vérification automatique
-router.get('/check-status', rendezvousFtController.checkAndUpdateStatus);
+// Routes spécifiques pour un ID
+router.get('/:id/full', rendezvousFtController.getFullRendezvousData);
 router.get('/:id/check', rendezvousFtController.checkSingleRendezvousStatus);
-router.get('/check-overdue', rendezvousFtController.checkOverdueRendezvous);
+router.patch('/:id/statut', rendezvousFtController.updateRendezvousStatut);
+router.patch('/:id/mandat', rendezvousFtController.updateRdvForMandat);
 
 // Routes de gestion du vérificateur automatique
 router.post('/checker/restart', rendezvousFtController.restartChecker);

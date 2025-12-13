@@ -19,12 +19,10 @@ const menuItems = [
   { id: 'dashboard' as Section, label: 'Tableau de bord', icon: LayoutDashboard },
   { id: 'cartographie' as Section, label: 'Cartographie', icon: Map },
   { id: 'descente' as Section, label: 'Descente sur terrain', icon: Clipboard },
-  { id: 'rendezvous' as Section, label: 'Rendez-vous FT', icon: FileText },
-  { id: 'fiche' as Section, label: 'Fiche de travail', icon: FileText },
+  { id: 'rendezvous' as Section, label: 'Rendez-vous pour faire FT', icon: FileText },
+  { id: 'fiche' as Section, label: 'FT Etabli', icon: FileText },
   { id: 'avis' as Section, label: 'Avis de paiement', icon: Receipt },
-  { id: 'permis' as Section, label: 'Permis de construction', icon: FileCheck },
-  { id: 'autorisation' as Section, label: 'Autorisation camion', icon: Truck },
-  { id: 'rapport' as Section, label: 'Rapport', icon: BarChart3 },
+  { id: 'paiement' as Section, label: 'Paiement', icon: Truck },
 ];
 
 export default function Sidebar({ activeSection, setActiveSection, collapsed, setCollapsed }: SidebarProps) {
@@ -55,7 +53,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
 
       <aside
         className={`
-          fixed lg:relative top-0 left-0 h-screen
+          fixed lg:relative top-0 left-0 h-[92vh]
           bg-gradient-to-b from-slate-900 to-slate-800
           border-r border-slate-700/50
           transition-all duration-200 ease-in-out z-50

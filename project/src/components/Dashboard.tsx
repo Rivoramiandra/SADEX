@@ -1,3 +1,4 @@
+// Dashboard.tsx
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import DashboardContent from './sections/DashboardContent';
@@ -8,8 +9,10 @@ import AvisContent from './sections/AvisContent';
 import PermisContent from './sections/PermisContent';
 import AutorisationContent from './sections/AutorisationContent';
 import RapportContent from './sections/RapportContent';
+import NotificationsContent from './sections/NotificationsContent';
 import { Section } from '../types';
 import RendezvousFT from './sections/RendezvousFT';
+import PaiementContent from './sections/PaiementContent';
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
@@ -33,26 +36,35 @@ export default function Dashboard() {
         return <AutorisationContent />;
       case 'rapport':
         return <RapportContent />;
-              case 'rendezvous':
-        return < RendezvousFT/>;
+      case 'rendezvous':
+        return <RendezvousFT />;
+      case 'notifications':
+        return <NotificationsContent />;
+              case 'paiement':
+        return <PaiementContent />;
       default:
-        return <DashboardContent />;
+        return <DashboardContent />; 
     }
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <Sidebar
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        collapsed={collapsed}
-        setCollapsed={setCollapsed}
-      />
-      <main className="flex-1 overflow-auto">
-        <div className="p-4 lg:p-8">
+    <div className="flex h-full">
+      {/* Sidebar avec hauteur 100% */}
+      <div className="h-full">
+        <Sidebar
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+        />
+      </div>
+      
+      {/* Contenu principal avec défilement */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-auto p-4 lg:p-8">
           {renderContent()}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

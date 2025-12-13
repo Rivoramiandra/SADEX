@@ -15,17 +15,19 @@ const query = (text, params) => {
   return pool.query(text, params);
 };
 
-// Tester la connexion
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Erreur de connexion à PostgreSQL:', err.message);
-  } else {
+// Tester la connexion avec async/await
+(async () => {
+  try {
+    const client = await pool.connect();
     console.log('✅ Connexion PostgreSQL réussie !');
-    release();
+    client.release();
+  } catch (err) {
+    console.error('❌ Erreur de connexion à PostgreSQL:', err.message);
   }
-});
+})();
 
 module.exports = {
   query,
+  getClient: () => pool.connect(),
   pool
 };
