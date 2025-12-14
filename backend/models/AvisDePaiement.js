@@ -240,7 +240,20 @@ class AvisDePaiement {
     try {
       let query = `
         SELECT 
-          ap.*,
+          ap.id,
+        ap.iddescente,
+        ap.idft,
+        ap.num_ap,
+        ap.date_ap,
+        ap.superficie_remblai,
+        ap.zone_geo,
+        ap.pu,
+        ap.destination,
+        ap.montant,
+        ap.montant_lettre,
+        ap.fin_premier_paiement,
+        ap.contact,
+        ap.statut,
           ft.reference_ft,
           ft.date_ft,
           ft.nom_convoquee,
@@ -337,6 +350,432 @@ class AvisDePaiement {
       throw error;
     }
   }
+
+  /**
+ * Mettre à jour uniquement le statut d'un avis de paiement
+ * @param {number} id - L'ID de l'avis de paiement
+ * @param {Object} updateData - Les données de mise à jour (statut)
+ * @returns {Promise<Object|null>}
+ */
+static async updateStatusOnly(id, updateData) {
+  try {
+    // Vérifier que seul le statut est mis à jour
+    const allowedFields = ['statut'];
+    const filteredData = {};
+    
+    for (const [key, value] of Object.entries(updateData)) {
+      if (allowedFields.includes(key)) {
+        filteredData[key] = value;
+      }
+    }
+    
+    // Ajouter la date de mise à jour
+    filteredData.updated_at = new Date();
+    
+    // Construction de la requête SQL
+    const setClause = Object.keys(filteredData)
+      .map((key, index) => `${key} = $${index + 2}`)
+      .join(', ');
+    
+    const values = [id, ...Object.values(filteredData)];
+    
+    const query = `
+      UPDATE avisdepaiement
+      SET ${setClause}
+      WHERE id = $1
+      RETURNING *;
+    `;
+    
+    console.log('📝 Requête update statut avis:', query);
+    console.log('📋 Valeurs:', values);
+    
+    const result = await db.query(query, values);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0];
+    
+  } catch (error) {
+    console.error('❌ Erreur dans AvisDePaiement.updateStatusOnly:', error);
+    throw error;
+  }
+}
+
+/**
+ * Mettre à jour un avis avec gestion de la mise en demeure
+ * @param {number} id - L'ID de l'avis de paiement
+ * @param {Object} updateData - Les données à mettre à jour
+ * @returns {Promise<Object|null>}
+ */
+static async updateWithMiseEnDemeure(id, updateData) {
+  const client = await db.getClient();
+  
+  try {
+    await client.query('BEGIN');
+    
+    console.log('📝 Début transaction pour mise à jour avec mise en demeure');
+    console.log('📝 ID avis:', id);
+    console.log('📝 Données:', updateData);
+    
+    // Récupérer l'avis existant
+    const avisResult = await client.query(
+      'SELECT * FROM avisdepaiement WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    
+    if (avisResult.rows.length === 0) {
+      throw new Error('Avis de paiement non trouvé');
+    }
+    
+    const existingAvis = avisResult.rows[0];
+    
+    // Formater les données de mise à jour
+    const filteredData = {};
+    const allowedFields = [
+      'fin_premier_paiement', 'statut', 'updated_at'
+    ];
+    
+    for (const [key, value] of Object.entries(updateData)) {
+      if (allowedFields.includes(key)) {
+        if (key === 'fin_premier_paiement' && value) {
+          // Formater la date
+          filteredData[key] = new Date(value).toISOString().split('T')[0];
+        } else if (key === 'statut') {
+          // Valider le statut
+          const validStatuts = ['En attente', 'Payé', 'Annulé', 'En cours', 'Retard'];
+          if (!validStatuts.includes(value)) {
+            throw new Error(`Statut invalide: ${value}`);
+          }
+          filteredData[key] = value;
+        } else {
+          filteredData[key] = value;
+        }
+      }
+    }
+    
+    // Toujours mettre à jour la date de mise à jour
+    filteredData.updated_at = new Date();
+    
+    // Construction de la requête SQL
+    const setClause = Object.keys(filteredData)
+      .map((key, index) => `${key} = $${index + 2}`)
+      .join(', ');
+    
+    const values = [id, ...Object.values(filteredData)];
+    
+    const updateQuery = `
+      UPDATE avisdepaiement
+      SET ${setClause}
+      WHERE id = $1
+      RETURNING *;
+    `;
+    
+    console.log('📝 Requête update:', updateQuery);
+    console.log('📋 Valeurs update:', values);
+    
+    const updateResult = await client.query(updateQuery, values);
+    
+    if (updateResult.rows.length === 0) {
+      throw new Error('Échec de la mise à jour');
+    }
+    
+    const updatedAvis = updateResult.rows[0];
+    
+    // Créer un enregistrement de mise en demeure dans une table dédiée si elle existe
+    try {
+      await client.query(`
+        INSERT INTO mises_en_demeure (
+          avis_id, 
+          ancienne_date_paiement, 
+          nouvelle_date_paiement, 
+          date_envoi,
+          statut_avis
+        ) VALUES ($1, $2, $3, $4, $5)
+      `, [
+        id,
+        existingAvis.fin_premier_paiement,
+        updateData.fin_premier_paiement || existingAvis.fin_premier_paiement,
+        new Date(),
+        updateData.statut || existingAvis.statut
+      ]);
+      
+      console.log('✅ Enregistrement de mise en demeure créé');
+    } catch (error) {
+      console.warn('⚠️ Impossible de créer l\'enregistrement de mise en demeure:', error.message);
+      // Continuer même si l'enregistrement échoue
+    }
+    
+    await client.query('COMMIT');
+    console.log('✅ Transaction commitée avec succès');
+    
+    return updatedAvis;
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Erreur dans updateWithMiseEnDemeure:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+  // Dans la classe AvisDePaiement, après la méthode getStatutCounts, ajoutez :
+
+/**
+ * Vérifier si un avis est en retard
+ * @param {number} id - ID de l'avis
+ * @returns {Promise<boolean>}
+ */
+static async checkIfEnRetard(id) {
+  try {
+    const result = await db.query(`
+      SELECT 
+        ap.*,
+        CASE 
+          WHEN ap.statut = 'Payé' THEN false
+          WHEN ap.statut = 'Annulé' THEN false
+          WHEN ap.fin_premier_paiement IS NULL THEN false
+          WHEN ap.fin_premier_paiement < CURRENT_DATE THEN true
+          ELSE false
+        END as est_en_retard
+      FROM avisdepaiement ap
+      WHERE ap.id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return false;
+    }
+
+    const avis = result.rows[0];
+    
+    // Vérifier la logique
+    if (avis.statut === 'Payé' || avis.statut === 'Annulé') {
+      return false;
+    }
+
+    if (!avis.fin_premier_paiement) {
+      return false;
+    }
+
+    // Vérifier la date
+    const datePaiement = new Date(avis.fin_premier_paiement);
+    const aujourdHui = new Date();
+    
+    // Réinitialiser les heures pour comparer seulement les dates
+    datePaiement.setHours(0, 0, 0, 0);
+    aujourdHui.setHours(0, 0, 0, 0);
+    
+    return datePaiement < aujourdHui;
+  } catch (error) {
+    console.error('❌ Erreur dans AvisDePaiement.checkIfEnRetard:', error);
+    throw error;
+  }
+}
+/**
+ * Récupérer les avis en retard (En attente avec date dépassée)
+ * @param {Object} filters - Filtres additionnels
+ * @returns {Promise<Array>}
+ */
+static async findEnRetard(filters = {}) {
+  try {
+    let query = `
+      SELECT 
+        ap.*,
+        ft.reference_ft,
+        ft.date_ft,
+        ft.nom_convoquee,
+        ft.cin,
+        d.nom_personne_r,
+        d.commune,
+        d.fokontany
+      FROM avisdepaiement ap
+      LEFT JOIN ft ON ap.idft = ft.id
+      LEFT JOIN "Descentes" d ON ap.iddescente = d.id
+      WHERE ap.statut = 'En attente'
+        AND ap.fin_premier_paiement IS NOT NULL
+        AND ap.fin_premier_paiement < CURRENT_DATE
+    `;
+    
+    const values = [];
+    let paramIndex = 1;
+
+    // Filtres additionnels
+    if (filters.num_ap) {
+      query += ` AND ap.num_ap ILIKE $${paramIndex}`;
+      values.push(`%${filters.num_ap}%`);
+      paramIndex++;
+    }
+
+    if (filters.idft) {
+      query += ` AND ap.idft = $${paramIndex}`;
+      values.push(filters.idft);
+      paramIndex++;
+    }
+
+    if (filters.iddescente) {
+      query += ` AND ap.iddescente = $${paramIndex}`;
+      values.push(filters.iddescente);
+      paramIndex++;
+    }
+
+    if (filters.zone_geo) {
+      query += ` AND ap.zone_geo ILIKE $${paramIndex}`;
+      values.push(`%${filters.zone_geo}%`);
+      paramIndex++;
+    }
+
+    // Tri par défaut
+    query += ` ORDER BY ap.fin_premier_paiement ASC, ap.created_at DESC`;
+
+    const result = await db.query(query, values);
+
+    // Formater les dates pour chaque ligne
+    const avisList = result.rows.map(row => {
+      if (row.date_ap) {
+        row.date_ap_formatted = new Date(row.date_ap).toLocaleDateString('fr-FR');
+      }
+      if (row.fin_premier_paiement) {
+        row.fin_premier_paiement_formatted = new Date(row.fin_premier_paiement).toLocaleDateString('fr-FR');
+      }
+      if (row.created_at) {
+        row.created_at_formatted = new Date(row.created_at).toLocaleDateString('fr-FR');
+      }
+      return row;
+    });
+
+    return avisList;
+  } catch (error) {
+    console.error('❌ Erreur dans AvisDePaiement.findEnRetard:', error);
+    throw error;
+  }
+}
+
+/**
+ * Récupérer tous les avis avec statut calculé (En attente, Payé, En retard)
+ * @param {Object} filters - Filtres de recherche
+ * @returns {Promise<Object>}
+ */
+static async findAllWithCalculatedStatus(filters = {}) {
+  try {
+    // Récupérer tous les avis
+    let query = `
+      SELECT 
+        ap.*,
+        ft.reference_ft,
+        ft.date_ft,
+        ft.nom_convoquee,
+        ft.cin,
+        d.nom_personne_r,
+        d.commune,
+        d.fokontany,
+        CASE 
+          WHEN ap.statut = 'Payé' THEN 'Payé'
+          WHEN ap.statut = 'Annulé' THEN 'Annulé'
+          WHEN ap.statut = 'En attente' AND ap.fin_premier_paiement IS NOT NULL AND ap.fin_premier_paiement < CURRENT_DATE 
+            THEN 'En retard'
+          ELSE 'En attente'
+        END as statut_calcule
+      FROM avisdepaiement ap
+      LEFT JOIN ft ON ap.idft = ft.id
+      LEFT JOIN "Descentes" d ON ap.iddescente = d.id
+      WHERE 1=1
+    `;
+    
+    const values = [];
+    let paramIndex = 1;
+
+    // Filtres par statut calculé
+    if (filters.statut_calcule && filters.statut_calcule !== 'tous') {
+      if (filters.statut_calcule === 'En retard') {
+        query += ` AND ap.statut = 'En attente' 
+                   AND ap.fin_premier_paiement IS NOT NULL 
+                   AND ap.fin_premier_paiement < CURRENT_DATE`;
+      } else if (filters.statut_calcule === 'En attente') {
+        query += ` AND ap.statut = 'En attente' 
+                   AND (ap.fin_premier_paiement IS NULL 
+                        OR ap.fin_premier_paiement >= CURRENT_DATE)`;
+      } else {
+        query += ` AND ap.statut = $${paramIndex}`;
+        values.push(filters.statut_calcule);
+        paramIndex++;
+      }
+    }
+
+    // Autres filtres
+    if (filters.num_ap) {
+      query += ` AND ap.num_ap ILIKE $${paramIndex}`;
+      values.push(`%${filters.num_ap}%`);
+      paramIndex++;
+    }
+
+    if (filters.idft) {
+      query += ` AND ap.idft = $${paramIndex}`;
+      values.push(filters.idft);
+      paramIndex++;
+    }
+
+    if (filters.iddescente) {
+      query += ` AND ap.iddescente = $${paramIndex}`;
+      values.push(filters.iddescente);
+      paramIndex++;
+    }
+
+    if (filters.date_from) {
+      query += ` AND ap.date_ap >= $${paramIndex}`;
+      values.push(filters.date_from);
+      paramIndex++;
+    }
+
+    if (filters.date_to) {
+      query += ` AND ap.date_ap <= $${paramIndex}`;
+      values.push(filters.date_to);
+      paramIndex++;
+    }
+
+    if (filters.zone_geo) {
+      query += ` AND ap.zone_geo ILIKE $${paramIndex}`;
+      values.push(`%${filters.zone_geo}%`);
+      paramIndex++;
+    }
+
+    // Tri par défaut
+    query += ` ORDER BY ap.created_at DESC`;
+
+    // Limite et offset pour pagination
+    if (filters.limit) {
+      query += ` LIMIT $${paramIndex}`;
+      values.push(filters.limit);
+      paramIndex++;
+    }
+
+    if (filters.offset) {
+      query += ` OFFSET $${paramIndex}`;
+      values.push(filters.offset);
+    }
+
+    const result = await db.query(query, values);
+
+    // Formater les dates pour chaque ligne
+    const avisList = result.rows.map(row => {
+      if (row.date_ap) {
+        row.date_ap_formatted = new Date(row.date_ap).toLocaleDateString('fr-FR');
+      }
+      if (row.fin_premier_paiement) {
+        row.fin_premier_paiement_formatted = new Date(row.fin_premier_paiement).toLocaleDateString('fr-FR');
+      }
+      if (row.created_at) {
+        row.created_at_formatted = new Date(row.created_at).toLocaleDateString('fr-FR');
+      }
+      return row;
+    });
+
+    return avisList;
+  } catch (error) {
+    console.error('❌ Erreur dans AvisDePaiement.findAllWithCalculatedStatus:', error);
+    throw error;
+  }
+}
 
   /**
    * Mettre à jour un avis de paiement
@@ -518,7 +957,132 @@ class AvisDePaiement {
       throw error;
     }
   }
+// Dans la classe AvisDePaiement, après la méthode findAll, ajoutez :
 
+/**
+ * Récupérer les avis de paiement par statut
+ * @param {string} statut - Le statut à filtrer
+ * @param {Object} filters - Filtres additionnels
+ * @returns {Promise<Array>}
+ */
+static async findByStatut(statut, filters = {}) {
+  try {
+    let query = `
+      SELECT 
+        ap.*,
+        ft.reference_ft,
+        ft.date_ft,
+        ft.nom_convoquee,
+        ft.cin,
+        d.nom_personne_r,
+        d.commune,
+        d.fokontany
+      FROM avisdepaiement ap
+      LEFT JOIN ft ON ap.idft = ft.id
+      LEFT JOIN "Descentes" d ON ap.iddescente = d.id
+      WHERE ap.statut = $1
+    `;
+    
+    const values = [statut];
+    let paramIndex = 2;
+
+    // Filtres additionnels
+    if (filters.num_ap) {
+      query += ` AND ap.num_ap ILIKE $${paramIndex}`;
+      values.push(`%${filters.num_ap}%`);
+      paramIndex++;
+    }
+
+    if (filters.idft) {
+      query += ` AND ap.idft = $${paramIndex}`;
+      values.push(filters.idft);
+      paramIndex++;
+    }
+
+    if (filters.iddescente) {
+      query += ` AND ap.iddescente = $${paramIndex}`;
+      values.push(filters.iddescente);
+      paramIndex++;
+    }
+
+    if (filters.date_from) {
+      query += ` AND ap.date_ap >= $${paramIndex}`;
+      values.push(filters.date_from);
+      paramIndex++;
+    }
+
+    if (filters.date_to) {
+      query += ` AND ap.date_ap <= $${paramIndex}`;
+      values.push(filters.date_to);
+      paramIndex++;
+    }
+
+    // Tri par défaut
+    query += ` ORDER BY ap.created_at DESC`;
+
+    // Limite et offset pour pagination
+    if (filters.limit) {
+      query += ` LIMIT $${paramIndex}`;
+      values.push(filters.limit);
+      paramIndex++;
+    }
+
+    if (filters.offset) {
+      query += ` OFFSET $${paramIndex}`;
+      values.push(filters.offset);
+    }
+
+    const result = await db.query(query, values);
+
+    // Formater les dates pour chaque ligne
+    const avisList = result.rows.map(row => {
+      if (row.date_ap) {
+        row.date_ap_formatted = new Date(row.date_ap).toLocaleDateString('fr-FR');
+      }
+      if (row.fin_premier_paiement) {
+        row.fin_premier_paiement_formatted = new Date(row.fin_premier_paiement).toLocaleDateString('fr-FR');
+      }
+      if (row.created_at) {
+        row.created_at_formatted = new Date(row.created_at).toLocaleDateString('fr-FR');
+      }
+      return row;
+    });
+
+    return avisList;
+  } catch (error) {
+    console.error('❌ Erreur dans AvisDePaiement.findByStatut:', error);
+    throw error;
+  }
+}
+
+/**
+ * Récupérer les compteurs par statut
+ * @returns {Promise<Object>}
+ */
+static async getStatutCounts() {
+  try {
+    const result = await db.query(`
+      SELECT 
+        statut,
+        COUNT(*) as count,
+        SUM(montant) as total_montant
+      FROM avisdepaiement
+      GROUP BY statut
+      ORDER BY 
+        CASE statut 
+          WHEN 'Payé' THEN 1
+          WHEN 'En attente' THEN 2
+          WHEN 'Annulé' THEN 3
+          ELSE 4
+        END
+    `);
+
+    return result.rows;
+  } catch (error) {
+    console.error('❌ Erreur dans AvisDePaiement.getStatutCounts:', error);
+    throw error;
+  }
+}
   /**
    * Récupérer les avis par Descente ID
    * @param {number} iddescente - ID de la descente

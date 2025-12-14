@@ -1,17 +1,16 @@
-// src/hooks/useRealTimeNotifications.ts
+// src/hooks/useRealTimeNotifications.ts - VERSION CORRIGÉE
 import { useEffect, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import toast from 'react-hot-toast';
 
 interface RealTimeNotification {
   id: string;
-  type: 'rendezvous' | 'descente';
+  type: 'rendezvous' | 'descente' | 'avis_paiement';
   action: 'create' | 'update' | 'delete';
   data: any;
   timestamp: string;
 }
 
-export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "default"
+export const useRealTimeNotifications = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [notifications, setNotifications] = useState<RealTimeNotification[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -20,7 +19,8 @@ export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "defa
   const connectSocket = useCallback(() => {
     console.log('🔗 Tentative de connexion Socket.io...');
     
-    const newSocket = io('http://localhost:3000', {
+    // CORRECTION : Utiliser localhost:5000 (backend) au lieu de 3000 (frontend)
+    const newSocket = io('http://localhost:5000', {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
@@ -30,14 +30,14 @@ export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "defa
     });
 
     newSocket.on('connect', () => {
-      console.log('✅ Connecté au serveur Socket.io');
+      console.log('✅ Connecté au serveur Socket.io, ID:', newSocket.id);
       setIsConnected(true);
       setConnectionError(null);
     });
 
     newSocket.on('connect_error', (error) => {
       console.error('❌ Erreur de connexion Socket.io:', error.message);
-      setConnectionError(error.message);
+      setConnectionError(`Impossible de se connecter: ${error.message}`);
       setIsConnected(false);
     });
 
@@ -50,7 +50,7 @@ export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "defa
       console.log('📅 Nouveau rendez-vous reçu:', data);
       
       const notification: RealTimeNotification = {
-        id: `rt-${Date.now()}-${data.id}`,
+        id: `rt-${Date.now()}-${data.id || 'unknown'}`,
         type: 'rendezvous',
         action: 'create',
         data,
@@ -58,14 +58,13 @@ export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "defa
       };
       
       setNotifications(prev => [notification, ...prev.slice(0, 19)]);
-      window.dispatchEvent(new CustomEvent('real-time:new-rendezvous', { detail: data }));
     });
 
     newSocket.on('new-descente', (data) => {
       console.log('📍 Nouvelle descente reçue:', data);
       
       const notification: RealTimeNotification = {
-        id: `rt-${Date.now()}-${data.id}`,
+        id: `rt-${Date.now()}-${data.id || 'unknown'}`,
         type: 'descente',
         action: 'create',
         data,
@@ -73,33 +72,46 @@ export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "defa
       };
       
       setNotifications(prev => [notification, ...prev.slice(0, 19)]);
-      window.dispatchEvent(new CustomEvent('real-time:new-descente', { detail: data }));
+    });
+
+    newSocket.on('new-avis-paiement', (data) => {
+      console.log('💰 Nouvel avis de paiement reçu:', data);
+      
+      const notification: RealTimeNotification = {
+        id: `rt-${Date.now()}-${data.idavis || 'unknown'}`,
+        type: 'avis_paiement',
+        action: 'create',
+        data,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setNotifications(prev => [notification, ...prev.slice(0, 19)]);
     });
 
     newSocket.on('notification', (data) => {
-      console.log('📢 Notification:', data);
+      console.log('📢 Notification générale:', data);
     });
 
     setSocket(newSocket);
 
     return () => {
-      newSocket.disconnect();
+      console.log('🧹 Nettoyage de la connexion Socket.io');
+      if (newSocket && newSocket.connected) {
+        newSocket.disconnect();
+      }
     };
   }, []);
 
   useEffect(() => {
     const cleanup = connectSocket();
-    
-    return () => {
-      if (cleanup) cleanup();
-    };
+    return cleanup;
   }, [connectSocket]);
 
   const clearNotifications = useCallback(() => {
     setNotifications([]);
   }, []);
 
-  const getNotificationCount = useCallback((type?: 'rendezvous' | 'descente') => {
+  const getNotificationCount = useCallback((type?: 'rendezvous' | 'descente' | 'avis_paiement') => {
     if (!type) return notifications.length;
     return notifications.filter(n => n.type === type).length;
   }, [notifications]);
@@ -115,5 +127,5 @@ export const useRealTimeNotifications = () => { // 👈 Export nommé, pas "defa
   };
 };
 
-// Si vous voulez un export par défaut aussi, ajoutez :
-// export default useRealTimeNotifications;
+// Export par défaut pour compatibilité
+export default useRealTimeNotifications;

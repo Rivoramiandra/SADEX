@@ -22,7 +22,8 @@ const menuItems = [
   { id: 'rendezvous' as Section, label: 'Rendez-vous pour faire FT', icon: FileText },
   { id: 'fiche' as Section, label: 'FT Etabli', icon: FileText },
   { id: 'avis' as Section, label: 'Avis de paiement', icon: Receipt },
-  { id: 'paiement' as Section, label: 'Paiement', icon: Truck },
+  { id: 'paiement' as Section, label: 'Passer au paiement', icon: Truck },
+  { id: 'gererpaiement' as Section, label: 'Gerer le paiement', icon: Truck },
 ];
 
 export default function Sidebar({ activeSection, setActiveSection, collapsed, setCollapsed }: SidebarProps) {

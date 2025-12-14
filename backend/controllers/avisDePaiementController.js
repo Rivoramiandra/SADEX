@@ -186,33 +186,42 @@ class AvisDePaiementController {
       console.log('📥 === FIN - Création avis de paiement ===\n');
     }
   }
-
-  /**
-   * Récupérer tous les avis de paiement avec filtres optionnels
-   */
-  static async getAll(req, res) {
-    console.log('📋 GET /api/avis-de-paiement');
-    console.log('📋 Query params:', req.query);
+static async getAll(req, res) {
+  console.log('📋 GET /api/avis-de-paiement');
+  console.log('📋 Query params:', req.query);
+  
+  try {
+    const filters = req.query;
     
-    try {
-      const filters = req.query;
+    // Validation des filtres numériques
+    const numericFilters = ['idft', 'iddescente', 'montant_min', 'montant_max'];
+    numericFilters.forEach(filter => {
+      if (filters[filter] && !isNaN(filters[filter])) {
+        filters[filter] = Number(filters[filter]);
+      }
+    });
+    
+    console.log('📋 Filtres appliqués:', filters);
+    
+    const avisList = await AvisDePaiement.findAll(filters);
+    
+    console.log('✅ Nombre d\'avis trouvés:', avisList.length);
+    
+    // DEBUG: Vérifiez si le statut est présent dans les données
+    console.log('🔍 DEBUG - Premier avis reçu:', {
+      id: avisList[0]?.id,
+      num_ap: avisList[0]?.num_ap,
+      statut: avisList[0]?.statut,
+      hasStatut: 'statut' in (avisList[0] || {}),
+      allKeys: avisList[0] ? Object.keys(avisList[0]) : []
+    });
+    
+    // Formater les données pour le front-end
+    const formattedList = avisList.map(avis => {
+      // Fallback si statut manquant
+      const statut = avis.statut || 'En attente';
       
-      // Validation des filtres numériques
-      const numericFilters = ['idft', 'iddescente', 'montant_min', 'montant_max'];
-      numericFilters.forEach(filter => {
-        if (filters[filter] && !isNaN(filters[filter])) {
-          filters[filter] = Number(filters[filter]);
-        }
-      });
-      
-      console.log('📋 Filtres appliqués:', filters);
-      
-      const avisList = await AvisDePaiement.findAll(filters);
-      
-      console.log('✅ Nombre d\'avis trouvés:', avisList.length);
-      
-      // Formater les données pour le front-end
-      const formattedList = avisList.map(avis => ({
+      return {
         id: avis.id,
         iddescente: avis.iddescente,
         idft: avis.idft,
@@ -226,29 +235,260 @@ class AvisDePaiementController {
         montant_lettre: avis.montant_lettre,
         fin_premier_paiement: avis.fin_premier_paiement,
         contact: avis.contact,
+        statut: statut, // <-- AJOUTEZ CECI !
         created_at: avis.created_at,
-        updated_at: avis.updated_at
-      }));
-      
-      res.json({
-        success: true,
-        data: formattedList,
-        count: formattedList.length,
-        metadata: {
-          total: formattedList.length,
-          montant_total: formattedList.reduce((sum, avis) => sum + (avis.montant || 0), 0)
-        }
-      });
-    } catch (error) {
-      console.error('❌ Erreur dans getAll avis de paiement:', error);
-      res.status(500).json({
+        updated_at: avis.updated_at,
+        // Incluez aussi les données jointes si elles existent
+        reference_ft: avis.reference_ft,
+        date_ft: avis.date_ft,
+        nom_convoquee: avis.nom_convoquee,
+        cin: avis.cin,
+        nom_personne_r: avis.nom_personne_r,
+        commune: avis.commune,
+        fokontany: avis.fokontany
+      };
+    });
+    
+    // DEBUG: Vérifiez le résultat formaté
+    console.log('🔍 DEBUG - Premier avis formaté:', {
+      id: formattedList[0]?.id,
+      statut: formattedList[0]?.statut
+    });
+    
+    res.json({
+      success: true,
+      data: formattedList,
+      count: formattedList.length,
+      metadata: {
+        total: formattedList.length,
+        montant_total: formattedList.reduce((sum, avis) => sum + parseFloat(avis.montant || 0), 0)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erreur dans getAll avis de paiement:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des avis de paiement',
+      error: error.message
+    });
+  }
+}
+/**
+ * Mettre à jour le statut d'un avis de paiement
+ */
+static async updateStatus(req, res) {
+  console.log('🔄 PATCH /api/avis-de-paiement/:id');
+  console.log('🔄 ID à mettre à jour:', req.params.id);
+  console.log('🔄 Données de mise à jour:', req.body);
+  
+  try {
+    const { id } = req.params;
+    const { statut } = req.body;
+    
+    console.log('🔄 Mise à jour statut avis ID:', id);
+    console.log('🔄 Nouveau statut:', statut);
+    
+    // Validation du statut
+    const validStatuts = ['En attente', 'Payé', 'Annulé', 'En cours', 'Retard'];
+    if (!statut || !validStatuts.includes(statut)) {
+      return res.status(400).json({
         success: false,
-        message: 'Erreur lors de la récupération des avis de paiement',
-        error: error.message
+        message: 'Statut invalide',
+        validStatuts: validStatuts
       });
     }
+    
+    // Mettre à jour uniquement le statut
+    const updateData = { statut };
+    
+    // Appeler la méthode update du modèle avec seulement le statut
+    const updatedAvis = await AvisDePaiement.updateStatusOnly(id, updateData);
+    
+    if (!updatedAvis) {
+      console.log('❌ Avis non trouvé pour mise à jour statut ID:', id);
+      return res.status(404).json({
+        success: false,
+        message: 'Avis de paiement non trouvé'
+      });
+    }
+    
+    console.log('✅ Statut avis mis à jour:', updatedAvis.id, '-', updatedAvis.num_ap, '- Nouveau statut:', updatedAvis.statut);
+    
+    res.json({
+      success: true,
+      message: 'Statut de l\'avis de paiement mis à jour avec succès',
+      data: updatedAvis
+    });
+  } catch (error) {
+    console.error('❌ Erreur dans updateStatus avis de paiement:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la mise à jour du statut',
+      error: error.message
+    });
   }
+}
 
+/**
+ * Envoyer une mise en demeure et mettre à jour la date de paiement
+ */
+static async sendMiseEnDemeure(req, res) {
+  console.log('📧 POST /api/avis-de-paiement/:id/mise-en-demeure');
+  console.log('📧 ID avis:', req.params.id);
+  console.log('📧 Données de mise en demeure:', req.body);
+  
+  try {
+    const { id } = req.params;
+    const { nouvelle_date_paiement } = req.body;
+    
+    console.log('📧 Mise en demeure pour avis ID:', id);
+    console.log('📧 Nouvelle date de paiement:', nouvelle_date_paiement);
+    
+    // Validation des données
+    if (!nouvelle_date_paiement) {
+      return res.status(400).json({
+        success: false,
+        message: 'La nouvelle date de paiement est requise'
+      });
+    }
+    
+    // Vérifier que la date est valide et dans le futur
+    const nouvelleDate = new Date(nouvelle_date_paiement);
+    const aujourdHui = new Date();
+    aujourdHui.setHours(0, 0, 0, 0);
+    
+    if (isNaN(nouvelleDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date de paiement invalide'
+      });
+    }
+    
+    // Réinitialiser les heures pour comparer seulement les dates
+    const dateCompare = new Date(nouvelleDate);
+    dateCompare.setHours(0, 0, 0, 0);
+    
+    if (dateCompare <= aujourdHui) {
+      return res.status(400).json({
+        success: false,
+        message: 'La nouvelle date de paiement doit être dans le futur'
+      });
+    }
+    
+    // Récupérer l'avis
+    const avis = await AvisDePaiement.findById(id);
+    
+    if (!avis) {
+      console.log('❌ Avis non trouvé pour mise en demeure ID:', id);
+      return res.status(404).json({
+        success: false,
+        message: 'Avis de paiement non trouvé'
+      });
+    }
+    
+    // Vérifier que l'avis est en retard (logique côté serveur)
+    const estEnRetard = await AvisDePaiement.checkIfEnRetard(id);
+    
+    if (!estEnRetard) {
+      return res.status(400).json({
+        success: false,
+        message: 'La mise en demeure ne peut être envoyée que pour les avis en retard'
+      });
+    }
+    
+    // Envoyer la mise en demeure (simulation - à adapter selon votre système d'email)
+    // Ici, nous allons juste logger l'action
+    const miseEnDemeureData = {
+      avis_id: id,
+      num_ap: avis.num_ap,
+      beneficiaire: avis.nom_convoquee || avis.nom_personne_r,
+      montant: avis.montant,
+      ancienne_date: avis.fin_premier_paiement,
+      nouvelle_date: nouvelle_date_paiement,
+      date_envoi: new Date().toISOString()
+    };
+    
+    console.log('📧 Envoi mise en demeure:', miseEnDemeureData);
+    
+    // Mettre à jour l'avis avec la nouvelle date et changer le statut à "En attente"
+    const updateData = {
+      fin_premier_paiement: nouvelle_date_paiement,
+      statut: 'En attente' // Changer le statut à "En attente"
+    };
+    
+    const updatedAvis = await AvisDePaiement.update(id, updateData);
+    
+    if (!updatedAvis) {
+      throw new Error('Échec de la mise à jour de l\'avis');
+    }
+    
+    console.log('✅ Mise en demeure envoyée et avis mis à jour:', updatedAvis.id, '- Nouveau statut:', updatedAvis.statut);
+    
+    // Simuler l'envoi d'email (à implémenter avec votre système d'email)
+    // await this.sendMiseEnDemeureEmail(avis, nouvelle_date_paiement);
+    
+    res.json({
+      success: true,
+      message: 'Mise en demeure envoyée avec succès et statut mis à jour en "En attente"',
+      data: {
+        avis: updatedAvis,
+        mise_en_demeure: {
+          envoyee_le: new Date().toISOString(),
+          nouvelle_date_paiement: nouvelle_date_paiement,
+          statut: 'En attente'
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erreur dans sendMiseEnDemeure:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de l\'envoi de la mise en demeure',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Vérifier si un avis est en retard
+ * @param {number} id - ID de l'avis
+ * @returns {Promise<boolean>}
+ */
+static async checkIfEnRetard(id) {
+  try {
+    const avis = await AvisDePaiement.findById(id);
+    
+    if (!avis) {
+      return false;
+    }
+    
+    // Si l'avis est déjà payé ou annulé, il n'est pas en retard
+    if (avis.statut === 'Payé' || avis.statut === 'Annulé') {
+      return false;
+    }
+    
+    // Si pas de date de premier paiement, on ne peut pas déterminer
+    if (!avis.fin_premier_paiement) {
+      return false;
+    }
+    
+    // Vérifier si la date est dépassée
+    const datePaiement = new Date(avis.fin_premier_paiement);
+    const aujourdHui = new Date();
+    
+    // Réinitialiser les heures pour comparer seulement les dates
+    datePaiement.setHours(0, 0, 0, 0);
+    aujourdHui.setHours(0, 0, 0, 0);
+    
+    return datePaiement < aujourdHui;
+  } catch (error) {
+    console.error('❌ Erreur dans checkIfEnRetard:', error);
+    throw error;
+  }
+}
   /**
    * Récupérer un avis de paiement par ID avec relations
    */
@@ -600,6 +840,190 @@ class AvisDePaiementController {
     }
   }
 
+  // Dans la classe AvisDePaiementController, ajoutez :
+
+/**
+ * Récupérer les avis par statut
+ */
+static async getByStatut(req, res) {
+  console.log('📊 GET /api/avis-de-paiement/statut/:statut');
+  console.log('📊 Statut demandé:', req.params.statut);
+  console.log('📊 Query params:', req.query);
+  
+  try {
+    const { statut } = req.params;
+    const filters = req.query;
+    
+    // Validation du statut
+    const validStatuts = ['En attente', 'Payé', 'Annulé'];
+    if (!validStatuts.includes(statut)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Statut invalide',
+        validStatuts: validStatuts
+      });
+    }
+    
+    // Récupérer les avis par statut
+    const avisList = await AvisDePaiement.findByStatut(statut, filters);
+    
+    console.log(`✅ Nombre d'avis avec statut "${statut}":`, avisList.length);
+    
+    // Formater les données pour le front-end
+    const formattedList = avisList.map(avis => ({
+      id: avis.id,
+      iddescente: avis.iddescente,
+      idft: avis.idft,
+      num_ap: avis.num_ap,
+      date_ap: avis.date_ap,
+      superficie_remblai: avis.superficie_remblai,
+      zone_geo: avis.zone_geo,
+      pu: avis.pu,
+      destination: avis.destination,
+      montant: avis.montant,
+      montant_lettre: avis.montant_lettre,
+      fin_premier_paiement: avis.fin_premier_paiement,
+      contact: avis.contact,
+      statut: avis.statut,
+      created_at: avis.created_at,
+      updated_at: avis.updated_at,
+      // Données liées
+      ft: avis.ft,
+      descente: avis.descente
+    }));
+    
+    res.json({
+      success: true,
+      data: formattedList,
+      count: formattedList.length,
+      statut: statut,
+      metadata: {
+        montant_total: formattedList.reduce((sum, avis) => sum + (avis.montant || 0), 0),
+        moyenne_montant: formattedList.length > 0 
+          ? formattedList.reduce((sum, avis) => sum + (avis.montant || 0), 0) / formattedList.length 
+          : 0
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erreur dans getByStatut avis de paiement:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des avis par statut',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Récupérer les compteurs par statut
+ */
+static async getStatutCounts(req, res) {
+  console.log('📊 GET /api/avis-de-paiement/stats/statuts');
+  
+  try {
+    console.log('📊 Calcul des compteurs par statut...');
+    const statutCounts = await AvisDePaiement.getStatutCounts();
+    
+    console.log('📊 Compteurs par statut:', statutCounts);
+    
+    // Formater les résultats
+    const formattedStats = statutCounts.map(item => ({
+      statut: item.statut,
+      count: parseInt(item.count),
+      total_montant: parseFloat(item.total_montant) || 0
+    }));
+    
+    res.json({
+      success: true,
+      data: formattedStats
+    });
+  } catch (error) {
+    console.error('❌ Erreur dans getStatutCounts:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des compteurs par statut',
+      error: error.message
+    });
+  }
+}
+/**
+ * Récupérer les avis par statut calculé
+ */
+static async getByStatutCalcule(req, res) {
+  console.log('📊 GET /api/avis-de-paiement/statut-calcule/:statut');
+  console.log('📊 Statut demandé:', req.params.statut);
+  console.log('📊 Query params:', req.query);
+  
+  try {
+    const { statut } = req.params;
+    const filters = req.query;
+    filters.statut_calcule = statut;
+    
+    // Validation du statut
+    const validStatuts = ['En attente', 'Payé', 'En retard', 'Annulé', 'tous'];
+    if (!validStatuts.includes(statut)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Statut invalide',
+        validStatuts: validStatuts.filter(s => s !== 'tous')
+      });
+    }
+    
+    // Récupérer les avis par statut calculé
+    const avisList = await AvisDePaiement.findAllWithCalculatedStatus(filters);
+    
+    console.log(`✅ Nombre d'avis avec statut calculé "${statut}":`, avisList.length);
+    
+    // Formater les données pour le front-end
+    const formattedList = avisList.map(avis => ({
+      id: avis.id,
+      iddescente: avis.iddescente,
+      idft: avis.idft,
+      num_ap: avis.num_ap,
+      date_ap: avis.date_ap,
+      superficie_remblai: avis.superficie_remblai,
+      zone_geo: avis.zone_geo,
+      pu: avis.pu,
+      destination: avis.destination,
+      montant: avis.montant,
+      montant_lettre: avis.montant_lettre,
+      fin_premier_paiement: avis.fin_premier_paiement,
+      contact: avis.contact,
+      statut: avis.statut, // Statut original de la base
+      statut_calcule: avis.statut_calcule, // Statut calculé
+      created_at: avis.created_at,
+      updated_at: avis.updated_at,
+      // Données liées
+      reference_ft: avis.reference_ft,
+      date_ft: avis.date_ft,
+      nom_convoquee: avis.nom_convoquee,
+      cin: avis.cin,
+      nom_personne_r: avis.nom_personne_r,
+      commune: avis.commune,
+      fokontany: avis.fokontany
+    }));
+    
+    res.json({
+      success: true,
+      data: formattedList,
+      count: formattedList.length,
+      statut: statut,
+      metadata: {
+        montant_total: formattedList.reduce((sum, avis) => sum + (avis.montant || 0), 0),
+        moyenne_montant: formattedList.length > 0 
+          ? formattedList.reduce((sum, avis) => sum + (avis.montant || 0), 0) / formattedList.length 
+          : 0
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erreur dans getByStatutCalcule:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la récupération des avis par statut',
+      error: error.message
+    });
+  }
+}
   /**
    * Récupérer les avis par Descente ID
    */

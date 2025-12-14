@@ -13,6 +13,7 @@ import NotificationsContent from './sections/NotificationsContent';
 import { Section } from '../types';
 import RendezvousFT from './sections/RendezvousFT';
 import PaiementContent from './sections/PaiementContent';
+import Gererpaiement from './sections/Gererpaiement';
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
@@ -42,6 +43,9 @@ export default function Dashboard() {
         return <NotificationsContent />;
               case 'paiement':
         return <PaiementContent />;
+                      case 'gererpaiement':
+        return <Gererpaiement />;
+
       default:
         return <DashboardContent />; 
     }

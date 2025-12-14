@@ -10,6 +10,7 @@ const descenteRoutes = require("./routes/descente.routes");
 const rendezvousFtRoutes = require('./routes/rendezvousFtRoutes');
 const ftRoutes = require('./routes/ftRoutes');
 const avisDePaiementRoutes = require('./routes/avisDePaiementRoutes'); // Nouvelle route
+const paiementRoutes = require('./routes/paiementRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -32,7 +33,7 @@ app.use("/api/descentes", descenteRoutes);
 app.use('/api/rendezvousft', rendezvousFtRoutes);
 app.use('/api/ft', ftRoutes);
 app.use('/api/avis-de-paiement', avisDePaiementRoutes); // Ajout de la nouvelle route
-
+app.use('/api', paiementRoutes);
 // Route de test santé du serveur
 app.get('/api/health', (req, res) => {
   res.json({ 
