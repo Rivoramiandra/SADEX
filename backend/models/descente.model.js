@@ -366,5 +366,187 @@ export default {
       console.error("❌ Erreur SQL DELETE Descente:", error);
       throw error;
     }
+  },
+
+  // AJOUTER CETTE MÉTHODE - Récupérer toutes les descentes avec leurs relations FT, Avis, Paiement pour la carte
+  getForMap: async () => {
+    const query = `
+      SELECT DISTINCT ON (d.id)
+        -- Informations descente
+        d.id,
+        d.reference,
+        d.n_pv_pat,
+        d.n_fifafi,
+        d.date_descente,
+        d.heure_descente,
+        d.date_rendez_vous,
+        d.heure_rendez_vous,
+        d.type_verbalisateur,
+        d.nom_verbalisateur,
+        d.personne_r,
+        d.nom_personne_r,
+        d.contact_r,
+        d.adresse_r,
+        d.district,
+        d.commune,
+        d.fokontany,
+        d.localisation,
+        d.superficie,
+        d.infraction,
+        d.actions,
+        d.modele_pv,
+        d.dossier_a_fournir,
+        d.statut_descente,
+        
+        -- Coordonnées (utiliser x_coord et y_coord)
+        d.x_coord AS laborde_x,
+        d.y_coord AS laborde_y,
+        
+        -- Relations FT (corrigé: reference_ft au lieu de reference)
+        ft.id AS ft_id,
+        ft.reference_ft AS ft_reference,
+        ft.statut AS ft_statut,
+        ft.date_ft,
+        ft.statut_dossier AS ft_statut_dossier,
+        
+        -- Relations Avis
+        ap.id AS avis_id,
+        ap.iddescente AS avis_iddescente,
+        ap.statut AS avis_statut,
+        
+        -- Relations Paiement
+        p.idpaiement AS paiement_id,
+        p.iddescente AS paiement_iddescente,
+        p.idft AS paiement_idft,
+        p.idavis AS paiement_idavis,
+        p.montant AS paiement_montant,
+        p.date_paiement AS paiement_date,
+        p.statut AS paiement_statut
+        
+      FROM public."Descentes" d
+      
+      -- LEFT JOIN Fait Terrain (FT)
+      LEFT JOIN public.ft ft ON ft.iddescente = d.id
+      
+      -- LEFT JOIN Avis de paiement
+      LEFT JOIN public.avisdepaiement ap ON ap.iddescente = d.id
+      
+      -- LEFT JOIN Paiement
+      LEFT JOIN public.paiement p ON (p.iddescente = d.id OR p.idft = ft.id OR p.idavis = ap.id)
+      
+      WHERE d.x_coord IS NOT NULL AND d.y_coord IS NOT NULL
+      
+      ORDER BY d.id, d.date_descente DESC;
+    `;
+    
+    try {
+      const result = await pool.query(query);
+      
+      // Regrouper les résultats pour éviter les doublons
+      const descentesMap = new Map();
+      
+      result.rows.forEach(row => {
+        const descenteId = row.id;
+        
+        if (!descentesMap.has(descenteId)) {
+          // Créer la structure de base de la descente
+          descentesMap.set(descenteId, {
+            // Identifiant
+            id: row.id,
+            
+            // Références
+            reference: row.reference,
+            n_pv_pat: row.n_pv_pat,
+            n_fifafi: row.n_fifafi,
+            
+            // Dates
+            date_descente: row.date_descente,
+            heure_descente: row.heure_descente,
+            date_rendez_vous: row.date_rendez_vous,
+            heure_rendez_vous: row.heure_rendez_vous,
+            
+            // Personnes
+            type_verbalisateur: row.type_verbalisateur,
+            nom_verbalisateur: row.nom_verbalisateur,
+            personne_r: row.personne_r,
+            nom_personne_r: row.nom_personne_r,
+            contact_r: row.contact_r,
+            adresse_r: row.adresse_r,
+            
+            // Localisation
+            district: row.district,
+            commune: row.commune,
+            fokontany: row.fokontany,
+            localisation: row.localisation,
+            superficie: row.superficie,
+            
+            // Infractions et actions
+            infraction: row.infraction || "Infraction non spécifiée",
+            actions: row.actions,
+            
+            // Autres
+            modele_pv: row.modele_pv,
+            dossier_a_fournir: row.dossier_a_fournir,
+            statut_descente: row.statut_descente,
+            
+            // Coordonnées Laborde
+            laborde_x: row.laborde_x,
+            laborde_y: row.laborde_y,
+            
+            // Détails des relations
+            details: {
+              ft_id: null,
+              ft_reference: null,
+              ft_statut: null,
+              ft_date: null,
+              ft_statut_dossier: null,
+              
+              avis_id: null,
+              avis_statut: null,
+              
+              paiement_id: null,
+              paiement_montant: null,
+              paiement_date: null,
+              paiement_statut: null
+            }
+          });
+        }
+        
+        const descente = descentesMap.get(descenteId);
+        
+        // Mettre à jour les relations FT si elles existent
+        if (row.ft_id && !descente.details.ft_id) {
+          descente.details.ft_id = row.ft_id;
+          descente.details.ft_reference = row.ft_reference;
+          descente.details.ft_statut = row.ft_statut;
+          descente.details.ft_date = row.date_ft;
+          descente.details.ft_statut_dossier = row.ft_statut_dossier;
+        }
+        
+        // Mettre à jour les relations Avis si elles existent
+        if (row.avis_id && !descente.details.avis_id) {
+          descente.details.avis_id = row.avis_id;
+          descente.details.avis_statut = row.avis_statut;
+        }
+        
+        // Mettre à jour les relations Paiement si elles existent
+        if (row.paiement_id && !descente.details.paiement_id) {
+          descente.details.paiement_id = row.paiement_id;
+          descente.details.paiement_montant = row.paiement_montant;
+          descente.details.paiement_date = row.paiement_date;
+          descente.details.paiement_statut = row.paiement_statut;
+        }
+      });
+      
+      // Convertir la Map en tableau
+      const descentesArray = Array.from(descentesMap.values());
+      
+      console.log(`✅ ${descentesArray.length} descentes récupérées pour la carte avec relations`);
+      return descentesArray;
+      
+    } catch (error) {
+      console.error("❌ Erreur SQL getForMap:", error);
+      throw error;
+    }
   }
 };

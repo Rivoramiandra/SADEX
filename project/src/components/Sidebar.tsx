@@ -55,24 +55,24 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
       <aside
         className={`
           fixed lg:relative top-0 left-0 h-[92vh]
-          bg-gradient-to-b from-slate-900 to-slate-800
-          border-r border-slate-700/50
+          bg-gradient-to-b from-slate-900 to-slate-800 /* 🔥 Rétabli: Fond sombre */
+          border-r border-slate-700/50                   /* 🔥 Rétabli: Bordure sombre */
           transition-all duration-200 ease-in-out z-50
           flex flex-col
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${collapsed ? 'w-20 lg:w-20' : 'w-64 lg:w-72'}
         `}
       >
-        <div className="flex items-center justify-between p-4 lg:p-6 border-b border-slate-700/50">
+        <div className="flex items-center justify-between p-4 lg:p-6 border-b border-slate-700/50"> {/* 🔥 Rétabli: Bordure sombre */}
           <div className={`flex items-center gap-3 ${collapsed ? 'lg:hidden' : ''}`}>
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center font-bold text-white text-lg shadow-lg">
               AP
             </div>
-            <span className="font-bold text-xl text-white">APIPA</span>
+            <span className="font-bold text-xl text-white">APIPA</span> {/* 🔥 Rétabli: Texte blanc */}
           </div>
           <button
             onClick={toggleCollapse}
-            className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors text-slate-400 hover:text-white"
+            className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors text-slate-400 hover:text-white" /* 🔥 Rétabli: Couleurs pour fond sombre */
           >
             {collapsed ? <Menu className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
@@ -92,8 +92,8 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
                     w-full flex items-center gap-3 px-3 py-3 rounded-lg
                     transition-all duration-200 group relative
                     ${isActive
-                      ? 'bg-gradient-to-r from-blue-500/20 to-violet-600/20 text-white shadow-lg'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                      ? 'bg-gradient-to-r from-blue-500/20 to-violet-600/20 text-white shadow-lg' /* 🔥 Rétabli: Style actif */
+                      : 'text-slate-400 hover:text-white hover:bg-slate-700/50' /* 🔥 Rétabli: Style inactif */
                     }
                     ${collapsed ? 'justify-center' : ''}
                   `}
@@ -107,7 +107,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
                     <span className="text-sm font-medium truncate">{item.label}</span>
                   )}
                   {collapsed && (
-                    <div className="absolute left-full ml-2 px-2 py-1 bg-slate-900 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-slate-900 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700"> {/* Fond sombre pour tooltip */}
                       {item.label}
                     </div>
                   )}
@@ -117,11 +117,11 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
           </div>
         </nav>
 
-        <div className="border-t border-slate-700/50 p-2 space-y-1">
+        <div className="border-t border-slate-700/50 p-2 space-y-1"> {/* 🔥 Rétabli: Bordure sombre */}
           <button
             className={`
               w-full flex items-center gap-3 px-3 py-3 rounded-lg
-              text-slate-400 hover:text-white hover:bg-slate-700/50
+              text-slate-400 hover:text-white hover:bg-slate-700/50 /* 🔥 Rétabli: Couleurs pour fond sombre */
               transition-all duration-200 group relative
               ${collapsed ? 'justify-center' : ''}
             `}
@@ -146,7 +146,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
           <button
             className={`
               w-full flex items-center gap-3 px-3 py-3 rounded-lg
-              text-slate-400 hover:text-red-400 hover:bg-red-500/10
+              text-slate-400 hover:text-red-400 hover:bg-red-500/10 /* 🔥 Rétabli: Couleurs pour fond sombre */
               transition-all duration-200 group relative
               ${collapsed ? 'justify-center' : ''}
             `}

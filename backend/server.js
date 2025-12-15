@@ -11,6 +11,11 @@ const rendezvousFtRoutes = require('./routes/rendezvousFtRoutes');
 const ftRoutes = require('./routes/ftRoutes');
 const avisDePaiementRoutes = require('./routes/avisDePaiementRoutes'); // Nouvelle route
 const paiementRoutes = require('./routes/paiementRoutes');
+const shapefileRoutes = require('./routes/ShapefileRoutes');
+const cadastreRoutes = require('./routes/cadastreRoutes');
+const titreRequisitionRoutes = require('./routes/titreRequisitionRoutes');
+const titresSansNomRoutes = require("./routes/titresansnomRoutes");
+
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +39,11 @@ app.use('/api/rendezvousft', rendezvousFtRoutes);
 app.use('/api/ft', ftRoutes);
 app.use('/api/avis-de-paiement', avisDePaiementRoutes); // Ajout de la nouvelle route
 app.use('/api', paiementRoutes);
+app.use('/api/shapefile', shapefileRoutes);// 🔥 CORRECTION: Ajout de la route Shapefile
+app.use('/api/cadastre', cadastreRoutes);
+app.use('/api/titre-requisition', titreRequisitionRoutes);
+app.use("/api/titres-sans-nom", titresSansNomRoutes);
+
 // Route de test santé du serveur
 app.get('/api/health', (req, res) => {
   res.json({ 

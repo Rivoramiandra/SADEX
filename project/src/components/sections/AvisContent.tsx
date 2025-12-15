@@ -782,7 +782,20 @@ export default function AvisContent() {
 
             <div className="p-6 space-y-4">
               <FaireAp 
-                ft={selectedFtForAvis}
+                ft={{
+            id: selectedFtForAvis.id,
+            reference_ft: selectedFtForAvis.reference_ft,
+            iddescente: selectedFtForAvis.iddescente,
+            // Passer toutes les données nécessaires
+            nom_convoquee: selectedFtForAvis.nom_convoquee,
+            nom_personne_r: selectedFtForAvis.nom_personne_r,
+            commune: selectedFtForAvis.commune,
+            fokontany: selectedFtForAvis.fokontany,
+            date_ft: selectedFtForAvis.date_ft,
+            heure_ft: selectedFtForAvis.heure_ft,
+            // Autres champs si nécessaires
+            ...selectedFtForAvis
+          }}
                 onClose={() => {
                   setShowCreateAvisModal(false);
                   setSelectedFtForAvis(null);

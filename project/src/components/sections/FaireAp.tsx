@@ -600,8 +600,8 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
 
   // Charger les données de la descente quand un FT est sélectionné
   useEffect(() => {
-    if (selectedFt && selectedFt.iddescente) {
-      fetchDescenteData(selectedFt.iddescente);
+    if (selectedFt && selectedFt.id) {
+      fetchDescenteData(selectedFt.id);
     }
   }, [selectedFt]);
 
@@ -693,42 +693,73 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   };
 
-  const fetchDescenteData = async (iddescente: number) => {
+  // CORRECTION ICI : Utiliser la route ft/:id/with-descente
+  const fetchDescenteData = async (ftId: number) => {
     try {
       setLoadingDescente(true);
       
-      const response = await fetch(`http://localhost:3000/api/rendezvousft/${iddescente}/full`);
+      // CORRECTION : Utiliser la route qui existe
+      console.log(`🔍 Chargement FT avec descente pour ID: ${ftId}`);
+      const response = await fetch(`http://localhost:3000/api/ft/${ftId}/with-descente`);
       
       if (!response.ok) {
-        throw new Error('Erreur lors de la récupération de la descente');
+        console.error(`❌ Erreur ${response.status}: ${response.statusText}`);
+        throw new Error(`Erreur ${response.status} lors de la récupération des données`);
       }
 
       const result = await response.json();
+      console.log('✅ Résultat API:', result);
       
-      if (result.success && result.data && result.data.descente) {
-        setDescenteData(result.data.descente);
+      if (result.success && result.data) {
+        // Les données de descente sont fusionnées avec les données FT
+        const ftData = result.data;
+        
+        // Extraire et formater les données de descente
+        const descenteInfo: Descente = {
+          id: ftData.iddescente,
+          reference: `DS-${ftData.iddescente}`,
+          date_descente: ftData.date_descente || ftData.date_ft,
+          heure_descente: ftData.heure_descente || ftData.heure_ft,
+          nom_personne_r: ftData.nom_personne_r || ftData.nom_convoquee || '',
+          commune: ftData.commune || '',
+          fokontany: ftData.fokontany || '',
+          district: ftData.district || '',
+          adresse_r: ftData.adresse || ftData.adresse_r || '',
+          contact_r: ftData.contact || ftData.contact_r || '',
+          x_coord: ftData.x_coord,
+          y_coord: ftData.y_coord,
+          infraction: ftData.infraction,
+          actions: ftData.actions,
+          dossier_a_fournir: ftData.dossier_a_fournir || ftData.descente_dossier_a_fournir || '',
+          superficie: ftData.superficie || ftData.superficie_remblai?.toString() || '',
+          localisation: ftData.localisation,
+          nom_verbalisateur: ftData.nom_verbalisateur,
+          type_verbalisateur: ftData.type_verbalisateur,
+          statut_descente: ftData.statut_descente
+        };
+        
+        setDescenteData(descenteInfo);
+        console.log('✅ Données descente extraites:', descenteInfo);
       } else {
-        const fallbackResponse = await fetch(`http://localhost:3000/api/descentes/${iddescente}`);
-        if (fallbackResponse.ok) {
-          const fallbackResult = await fallbackResponse.json();
-          if (fallbackResult.success && fallbackResult.data) {
-            setDescenteData(fallbackResult.data);
-          }
-        } else {
-          throw new Error('Descente non trouvée');
-        }
+        console.error('❌ Données non disponibles:', result.message);
+        throw new Error(result.message || 'Données non disponibles');
       }
     } catch (error) {
-      console.error('Erreur lors du chargement de la descente:', error);
+      console.error('❌ Erreur lors du chargement de la descente:', error);
+      
+      // Fallback : utiliser les données minimales du FT
       if (selectedFt) {
+        console.log('✅ Utilisation des données du FT comme fallback');
         setDescenteData({
           id: selectedFt.iddescente,
           reference: `DS-${selectedFt.iddescente}`,
-          date_descente: '',
-          heure_descente: '',
+          date_descente: selectedFt.date_ft,
+          heure_descente: selectedFt.heure_ft,
           nom_personne_r: selectedFt.nom_personne_r || selectedFt.nom_convoquee || '',
           commune: selectedFt.commune || '',
           fokontany: selectedFt.fokontany || '',
+          adresse_r: selectedFt.adresse || '',
+          contact_r: selectedFt.contact || ''
         });
       }
     } finally {

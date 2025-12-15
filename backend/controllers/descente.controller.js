@@ -44,6 +44,18 @@ const mapFormDataToModel = (formData) => {
   };
 };
 
+// Fonction de conversion Laborde vers WGS84
+const convertLabordeToWGS84 = (x, y) => {
+  // Définition de la projection Laborde Madagascar (EPSG:8441)
+  const proj4 = require('proj4');
+  
+  proj4.defs("EPSG:8441",
+    "+proj=omerc +lat_0=-18.9 +lonc=46.43722916666667 +alpha=18.9 +k=0.9995 +x_0=400000 +y_0=800000 +ellps=intl +towgs84=-189,-242,-91,0,0,0,0 +units=m +no_defs"
+  );
+  
+  const result = proj4("EPSG:8441", "EPSG:4326", [x, y]);
+  return [result[1], result[0]]; // [lat, lng]
+};
 // Créer une descente
 export const createDescente = async (req, res) => {
   try {
@@ -177,6 +189,171 @@ export const deleteDescente = async (req, res) => {
     console.error("❌ Erreur deleteDescente:", err);
     res.status(500).json({ 
       error: "Erreur lors de la suppression de la descente",
+      details: err.message 
+    });
+  }
+};
+// descente.controller.js - Modifiez la fonction getAllDescentesForMap
+// descente.controller.js - Modifiez la fonction getAllDescentesForMap
+
+export const getAllDescentesForMap = async (req, res) => {
+  try {
+    console.log("📨 Requête GET /descentes/carte");
+    
+    // Utiliser la nouvelle méthode getForMap
+    const descentes = await Descente.getForMap();
+    
+    // Fonction de conversion Laborde vers WGS84
+    const convertLabordeToWGS84 = (x, y) => {
+      if (!x || !y || x === 0 || y === 0 || isNaN(x) || isNaN(y)) {
+        return [null, null];
+      }
+      
+      try {
+        const proj4 = require('proj4');
+        
+        // Définition de la projection Laborde Madagascar (EPSG:8441)
+        proj4.defs("EPSG:8441",
+          "+proj=omerc +lat_0=-18.9 +lonc=46.43722916666667 +alpha=18.9 +k=0.9995 +x_0=400000 +y_0=800000 +ellps=intl +towgs84=-189,-242,-91,0,0,0,0 +units=m +no_defs"
+        );
+        
+        const result = proj4("EPSG:8441", "EPSG:4326", [x, y]);
+        return [result[1], result[0]]; // [lat, lng]
+      } catch (error) {
+        console.error("Erreur conversion proj4:", error);
+        return [null, null];
+      }
+    };
+    
+    // Traiter les descentes pour la carte
+    const descentesForMap = descentes.map(descente => {
+      let lat = descente.lat;
+      let lng = descente.lng;
+      let labordeX = descente.laborde_x || descente.x_coord;
+      let labordeY = descente.laborde_y || descente.y_coord;
+      
+      // Si pas de lat/lng mais des coordonnées Laborde, convertir
+      if ((!lat || !lng || isNaN(lat) || isNaN(lng)) && labordeX && labordeY) {
+        try {
+          [lat, lng] = convertLabordeToWGS84(labordeX, labordeY);
+          console.log(`📍 Conversion ${descente.id}: Laborde(${labordeX}, ${labordeY}) → WGS84(${lat}, ${lng})`);
+        } catch (error) {
+          console.error(`❌ Erreur conversion pour descente ${descente.id}:`, error);
+          lat = -18.8792;
+          lng = 47.5079;
+        }
+      }
+      
+      // Si toujours pas de coordonnées valides, utiliser des valeurs par défaut
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+        lat = -18.8792;
+        lng = 47.5079;
+      }
+      
+      return {
+        id: descente.id,
+        reference: descente.reference,
+        localisation: descente.localisation || descente.commune || "Non spécifié",
+        commune: descente.commune,
+        district: descente.district,
+        fokontany: descente.fokontany,
+        verbalisateur: descente.nom_verbalisateur,
+        type_verbalisateur: descente.type_verbalisateur,
+        infraction: descente.infraction,
+        actions: descente.actions,
+        date_descente: descente.date_descente,
+        heure_descente: descente.heure_descente,
+        date_rendez_vous: descente.date_rendez_vous,
+        heure_rendez_vous: descente.heure_rendez_vous,
+        personne_r: descente.personne_r,
+        nom_personne_r: descente.nom_personne_r,
+        contact_r: descente.contact_r,
+        adresse_r: descente.adresse_r,
+        superficie: descente.superficie,
+        dossier_a_fournir: descente.dossier_a_fournir,
+        statut_descente: descente.statut_descente,
+        modele_pv: descente.modele_pv,
+        n_pv_pat: descente.n_pv_pat,
+        n_fifafi: descente.n_fifafi,
+        ref_om: descente.ref_om,
+        ref_rapport: descente.ref_rapport,
+        
+        // Coordonnées pour la carte
+        lat: lat,
+        lng: lng,
+        laborde_x: labordeX,
+        laborde_y: labordeY,
+        
+        // Détails des relations
+        details: descente.details
+      };
+    });
+    
+    res.status(200).json({
+      success: true,
+      count: descentesForMap.length,
+      data: descentesForMap,
+      message: `${descentesForMap.length} descentes récupérées avec relations FT/Avis/Paiement`
+    });
+  } catch (err) {
+    console.error("❌ Erreur getAllDescentesForMap:", err);
+    res.status(500).json({ 
+      success: false,
+      error: "Erreur lors de la récupération des descentes pour la carte",
+      details: err.message 
+    });
+  }
+};
+
+// 🔥 AJOUTER : Route spécifique pour obtenir les coordonnées en WGS84
+export const getDescentesWGS84 = async (req, res) => {
+  try {
+    const descentes = await Descente.findAll();
+    
+    const result = descentes.map(descente => {
+      const x = descente.x_coord || descente.x;
+      const y = descente.y_coord || descente.y;
+      
+      let wgs84Lat = null;
+      let wgs84Lng = null;
+      
+      if (x && y) {
+        try {
+          [wgs84Lat, wgs84Lng] = convertLabordeToWGS84(x, y);
+        } catch (error) {
+          console.error(`Erreur conversion ${descente.id}:`, error);
+        }
+      }
+      
+      return {
+        id: descente.id,
+        reference: descente.reference,
+        // Système Laborde (coordonnées projetées en mètres)
+        laborde: {
+          x: x,
+          y: y
+        },
+        // Système WGS84 (coordonnées géographiques pour Leaflet)
+        wgs84: {
+          lat: wgs84Lat,
+          lng: wgs84Lng
+        },
+        localisation: descente.localisation,
+        commune: descente.commune,
+        district: descente.district
+      };
+    });
+    
+    res.status(200).json({
+      success: true,
+      count: result.length,
+      data: result
+    });
+  } catch (err) {
+    console.error("❌ Erreur getDescentesWGS84:", err);
+    res.status(500).json({ 
+      success: false,
+      error: "Erreur lors de la conversion des coordonnées",
       details: err.message 
     });
   }

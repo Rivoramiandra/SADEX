@@ -19,6 +19,8 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
 
+  const isCartographie = activeSection === 'cartographie';
+
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
@@ -41,9 +43,9 @@ export default function Dashboard() {
         return <RendezvousFT />;
       case 'notifications':
         return <NotificationsContent />;
-              case 'paiement':
+      case 'paiement':
         return <PaiementContent />;
-                      case 'gererpaiement':
+      case 'gererpaiement':
         return <Gererpaiement />;
 
       default:
@@ -63,9 +65,9 @@ export default function Dashboard() {
         />
       </div>
       
-      {/* Contenu principal avec défilement */}
+      {/* Contenu principal avec défilement conditionnel */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-auto p-4 lg:p-8">
+        <div className={`flex-1 ${isCartographie ? 'overflow-hidden' : 'overflow-auto p-4 lg:p-8'}`}>
           {renderContent()}
         </div>
       </div>
