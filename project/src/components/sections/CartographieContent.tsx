@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { 
-  Map, 
-  MapPin, 
-  Layers, 
-  ZoomIn, 
-  ZoomOut, 
+import {
+  Map,
+  MapPin,
+  Layers,
+  ZoomIn,
+  ZoomOut,
   Maximize2,
   Search,
   Satellite,
@@ -39,7 +39,6 @@ import proj4 from "proj4";
 import "leaflet/dist/leaflet.css";
 
 // --- DÉFINITIONS DES ICÔNES AVEC COULEURS ROUGE-JAUNE-BLEU-VERT ---
-
 // Rouge vif pour "En attente" (danger)
 const descenteIconRouge = new L.DivIcon({
   className: "custom-descente-icon-rouge",
@@ -96,17 +95,17 @@ const ShapefileLayer = () => {
       try {
         setLoading(true);
         setError(null);
-        
+       
         console.log('📡 Début du chargement du Shapefile...');
         const response = await fetch('http://localhost:3000/api/shapefile/limites');
-        
+       
         if (!response.ok) {
           throw new Error(`Erreur ${response.status}: ${response.statusText}`);
         }
-        
+       
         const data = await response.json();
         console.log('✅ Shapefile chargé depuis API:', data);
-        
+       
         // Convertir le format de votre API en GeoJSON standard
         const geojson = {
           type: "FeatureCollection",
@@ -120,7 +119,7 @@ const ShapefileLayer = () => {
             geometry: item.geom
           }))
         };
-        
+       
         setShapefileData(geojson);
       } catch (err) {
         console.error('❌ Erreur chargement Shapefile:', err);
@@ -129,17 +128,16 @@ const ShapefileLayer = () => {
         setLoading(false);
       }
     };
-
     fetchShapefile();
   }, []);
 
   // Fonction pour convertir les coordonnées Laborde vers WGS84
   const convertGeojsonCoordinates = (coords) => {
     if (!coords || !Array.isArray(coords)) return coords;
-    
+   
     // Pour MultiLineString: [[[x,y], [x,y], ...], [[x,y], ...]]
     if (Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && typeof coords[0][0][0] === 'number') {
-      return coords.map(line => 
+      return coords.map(line =>
         line.map(point => {
           try {
             // Convertir Laborde (mètres) vers WGS84 (degrés)
@@ -152,14 +150,14 @@ const ShapefileLayer = () => {
         })
       );
     }
-    
+   
     return coords;
   };
 
   // Convertir toutes les coordonnées du GeoJSON avec useMemo
   const convertedShapefileData = useMemo(() => {
     if (!shapefileData) return null;
-    
+   
     const converted = {
       ...shapefileData,
       features: shapefileData.features.map(feature => ({
@@ -170,7 +168,7 @@ const ShapefileLayer = () => {
         }
       }))
     };
-    
+   
     return converted;
   }, [shapefileData]);
 
@@ -224,9 +222,9 @@ const ShapefileLayer = () => {
           </div>
         </div>
       `;
-      
+     
       layer.bindPopup(popupContent);
-      
+     
       // Effet hover
       layer.on({
         mouseover: (e) => {
@@ -266,14 +264,14 @@ const CadastreLayer = () => {
       try {
         setLoading(true);
         setError(null);
-        
+       
         console.log('📡 Début du chargement des données cadastrales...');
         const response = await fetch('http://localhost:3000/api/cadastre/');
-        
+       
         if (!response.ok) {
           throw new Error(`Erreur ${response.status}: ${response.statusText}`);
         }
-        
+       
         const data = await response.json();
         setCadastreData(data);
       } catch (err) {
@@ -283,18 +281,17 @@ const CadastreLayer = () => {
         setLoading(false);
       }
     };
-
     fetchCadastre();
   }, []);
 
   // Fonction pour convertir les coordonnées des polygones cadastraux
   const convertCadastreCoordinates = (coords) => {
     if (!coords || !Array.isArray(coords)) return coords;
-    
+   
     // Pour MultiPolygon: [[[[x,y], [x,y], ...], [[x,y], ...]]]
     if (Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && Array.isArray(coords[0][0][0])) {
-      return coords.map(polygon => 
-        polygon.map(ring => 
+      return coords.map(polygon =>
+        polygon.map(ring =>
           ring.map(point => {
             try {
               const [lat, lng] = convertLabordeToWGS84(point[0], point[1]);
@@ -307,14 +304,14 @@ const CadastreLayer = () => {
         )
       );
     }
-    
+   
     return coords;
   };
 
   // Convertir toutes les coordonnées avec useMemo
   const convertedCadastreData = useMemo(() => {
     if (!cadastreData) return null;
-    
+   
     const converted = {
       ...cadastreData,
       features: cadastreData.features.map(feature => ({
@@ -325,7 +322,7 @@ const CadastreLayer = () => {
         }
       }))
     };
-    
+   
     return converted;
   }, [cadastreData]);
 
@@ -360,10 +357,10 @@ const CadastreLayer = () => {
   const styleParcelle = (feature) => {
     const surface = feature.properties.surface || 0;
     let fillColor = '#4ade80';
-    
+   
     if (surface > 1000) fillColor = '#fbbf24';
     if (surface > 5000) fillColor = '#f87171';
-    
+   
     return {
       weight: 1,
       opacity: 0.8,
@@ -377,7 +374,7 @@ const CadastreLayer = () => {
   const onEachParcelle = (feature, layer) => {
     if (feature.properties) {
       const { nom_sectio, section, parcelle, surface } = feature.properties;
-      
+     
       const popupContent = `
         <div style="padding: 8px; max-width: 300px;">
           <h3 style="margin: 0 0 8px 0; font-weight: bold; color: #1e293b; font-size: 14px;">
@@ -392,9 +389,9 @@ const CadastreLayer = () => {
           </div>
         </div>
       `;
-      
+     
       layer.bindPopup(popupContent);
-      
+     
       // Effet hover
       layer.on({
         mouseover: (e) => {
@@ -442,16 +439,15 @@ const TitreRequisitionLayer = () => {
       try {
         setLoading(true);
         setError(null);
-        
         console.log('📡 Début du chargement des titres réquisition...');
         const response = await fetch('http://localhost:3000/api/titre-requisition');
-        
+       
         if (!response.ok) {
           throw new Error(`Erreur ${response.status}: ${response.statusText}`);
         }
-        
+       
         const data = await response.json();
-        
+       
         // Convertir le format de l'API en GeoJSON standard
         const geojson = {
           type: "FeatureCollection",
@@ -472,7 +468,7 @@ const TitreRequisitionLayer = () => {
             geometry: item.geom
           }))
         };
-        
+       
         setTitresData(geojson);
       } catch (err) {
         console.error('❌ Erreur chargement titres réquisition:', err);
@@ -481,18 +477,17 @@ const TitreRequisitionLayer = () => {
         setLoading(false);
       }
     };
-
     fetchTitres();
   }, []);
 
   // Fonction pour convertir les coordonnées des titres réquisition
   const convertTitresCoordinates = (coords) => {
     if (!coords || !Array.isArray(coords)) return coords;
-    
+   
     // Pour MultiPolygon: [[[[x,y], [x,y], ...], [[x,y], ...]]]
     if (Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && Array.isArray(coords[0][0][0])) {
-      return coords.map(polygon => 
-        polygon.map(ring => 
+      return coords.map(polygon =>
+        polygon.map(ring =>
           ring.map(point => {
             try {
               const [lat, lng] = convertLabordeToWGS84(point[0], point[1]);
@@ -505,14 +500,14 @@ const TitreRequisitionLayer = () => {
         )
       );
     }
-    
+   
     return coords;
   };
 
   // Convertir toutes les coordonnées avec useMemo
   const convertedTitresData = useMemo(() => {
     if (!titresData) return null;
-    
+   
     const converted = {
       ...titresData,
       features: titresData.features.map(feature => ({
@@ -523,7 +518,7 @@ const TitreRequisitionLayer = () => {
         }
       }))
     };
-    
+   
     return converted;
   }, [titresData]);
 
@@ -558,10 +553,10 @@ const TitreRequisitionLayer = () => {
   const styleTitre = (feature) => {
     const tolerance = parseFloat(feature.properties.tolerance) || 0;
     let fillColor = '#4ade80';
-    
+   
     if (tolerance > 50) fillColor = '#fbbf24';
     if (tolerance > 100) fillColor = '#f87171';
-    
+   
     return {
       weight: 2,
       opacity: 0.9,
@@ -575,7 +570,7 @@ const TitreRequisitionLayer = () => {
   const onEachTitre = (feature, layer) => {
     if (feature.properties) {
       const { titre, properiete, titre_r, parcelle, aire_calcu, tolerance } = feature.properties;
-      
+     
       const popupContent = `
         <div style="padding: 8px; max-width: 350px;">
           <h3 style="margin: 0 0 8px 0; font-weight: bold; color: #1e293b; font-size: 14px; border-bottom: 2px solid #9333ea; padding-bottom: 4px;">
@@ -583,7 +578,7 @@ const TitreRequisitionLayer = () => {
           </h3>
           <div style="font-size: 12px; color: #475569;">
             <div style="margin-bottom: 4px;">
-              <strong style="color: #9333ea;">Titre Référence:</strong> 
+              <strong style="color: #9333ea;">Titre Référence:</strong>
               <div style="background: #f3e8ff; padding: 2px 6px; border-radius: 3px; margin-top: 2px; font-family: monospace;">
                 ${titre_r}
               </div>
@@ -600,8 +595,8 @@ const TitreRequisitionLayer = () => {
             </div>
             <div style="margin-top: 8px;">
               <strong>Tolérance:</strong>
-              <div style="display: inline-block; background: ${tolerance > 100 ? '#fecaca' : tolerance > 50 ? '#fef3c7' : '#d1fae5'}; 
-                        color: ${tolerance > 100 ? '#991b1b' : tolerance > 50 ? '#92400e' : '#065f46'}; 
+              <div style="display: inline-block; background: ${tolerance > 100 ? '#fecaca' : tolerance > 50 ? '#fef3c7' : '#d1fae5'};
+                        color: ${tolerance > 100 ? '#991b1b' : tolerance > 50 ? '#92400e' : '#065f46'};
                         padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">
                 ${parseFloat(tolerance).toFixed(2)}%
               </div>
@@ -614,9 +609,9 @@ const TitreRequisitionLayer = () => {
           </div>
         </div>
       `;
-      
+     
       layer.bindPopup(popupContent);
-      
+     
       // Effet hover
       layer.on({
         mouseover: (e) => {
@@ -655,23 +650,22 @@ const TitreRequisitionLayer = () => {
 };
 
 // --- Fonctions Utilitaires ---
-
 // Fonction pour déterminer l'icône en fonction des relations FT, Avis, Paiement
 const getDescenteIcon = (descente: any) => {
   const { details } = descente;
-  
+ 
   if (details?.paiement_id) {
     return descenteIconVert;
   }
-  
+ 
   if (details?.avis_id) {
     return descenteIconBleu;
   }
-  
+ 
   if (details?.ft_id) {
     return descenteIconJaune;
   }
-  
+ 
   return descenteIconRouge;
 };
 
@@ -741,7 +735,6 @@ const safeCoordinateDisplay = (coord: number): string => {
 };
 
 // --- Composant Principal ---
-
 export default function CartographieContent() {
   const [descentes, setDescentes] = useState<any[]>([]);
   const [filteredDescentes, setFilteredDescentes] = useState<any[]>([]);
@@ -760,9 +753,9 @@ export default function CartographieContent() {
   const [selectedDescente, setSelectedDescente] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [coordinateIssues, setCoordinateIssues] = useState<string[]>([]);
-  
+ 
   const mapRef = useRef<L.Map | null>(null);
-
+  
   // Filtres pour les couches
   const [layers, setLayers] = useState([
     { name: 'Points de descente', active: true, color: 'orange', type: 'descentes' },
@@ -773,7 +766,7 @@ export default function CartographieContent() {
     { name: 'Permis de construction', active: false, color: 'green', type: 'zone' },
     { name: 'Infrastructure critique', active: false, color: 'red', type: 'zone' },
   ]);
-
+  
   // Filtres pour les couleurs de descentes
   const [filtreCouleurs, setFiltreCouleurs] = useState({
     rouge: true,
@@ -781,27 +774,27 @@ export default function CartographieContent() {
     bleu: true,
     vert: true
   });
-
+  
   // Fonction pour déterminer la couleur d'une descente
   const getDescenteCouleur = (descente: any) => {
     const { details } = descente;
-    
+   
     if (details?.paiement_id) return 'vert';
     if (details?.avis_id) return 'bleu';
     if (details?.ft_id) return 'jaune';
     return 'rouge';
   };
-
+  
   // Fonction pour déterminer le statut affiché
   const getDescenteStatut = (descente: any) => {
     const { details } = descente;
-    
+   
     if (details?.paiement_id) return 'Paiement effectué';
     if (details?.avis_id) return 'Avis de paiement émis';
     if (details?.ft_id) return 'FT créé';
     return 'En attente';
   };
-
+  
   // Compter les descentes par couleur
   const descentesByColor = {
     rouge: descentes.filter(d => getDescenteCouleur(d) === 'rouge').length,
@@ -815,15 +808,15 @@ export default function CartographieContent() {
       try {
         setLoading(true);
         setCoordinateIssues([]);
-        
+       
         const resDescentes = await fetch("http://localhost:3000/api/descentes/carte/descentes");
-        
+       
         if (!resDescentes.ok) {
           throw new Error(`Erreur HTTP: ${resDescentes.status}`);
         }
-        
+       
         const response = await resDescentes.json();
-        
+       
         if (response.success && Array.isArray(response.data)) {
           const processedDescentes = response.data.map((item) => {
             const issues: string[] = [];
@@ -831,13 +824,13 @@ export default function CartographieContent() {
             let lng = item.lng;
             let labordeX = item.laborde_x;
             let labordeY = item.laborde_y;
-            
+           
             if (isLabordeCoordinates(lat, lng) && (!labordeX || !labordeY)) {
               labordeX = lng;
               labordeY = lat;
               issues.push("Inversion coordonnées détectée");
             }
-            
+           
             if (labordeX && labordeY) {
               try {
                 [lat, lng] = convertLabordeToWGS84(labordeX, labordeY);
@@ -845,15 +838,15 @@ export default function CartographieContent() {
                 issues.push(`Erreur conversion Laborde→WGS84: ${error.message}`);
               }
             }
-            
+           
             if (!isWGS84Coordinates(lat, lng)) {
               issues.push(`Coordonnées WGS84 hors plage normale (lat:${lat}, lng:${lng})`);
             }
-            
+           
             if (issues.length > 0) {
               setCoordinateIssues(prev => [...prev, `Descente ${item.id}: ${issues.join(', ')}`]);
             }
-            
+           
             return {
               id: item.id,
               reference: item.reference || null,
@@ -894,19 +887,19 @@ export default function CartographieContent() {
               coordinate_issues: issues
             };
           });
-          
-          const allDescentes = processedDescentes.filter(d => 
-            d.lat !== undefined && d.lng !== undefined && 
+         
+          const allDescentes = processedDescentes.filter(d =>
+            d.lat !== undefined && d.lng !== undefined &&
             !isNaN(d.lat) && !isNaN(d.lng)
           );
-          
+         
           setDescentes(allDescentes);
           setFilteredDescentes(allDescentes);
         } else {
           setDescentes([]);
           setFilteredDescentes([]);
         }
-        
+       
       } catch (error) {
         console.error("❌ Erreur lors du chargement des données:", error);
         setDescentes([]);
@@ -915,24 +908,22 @@ export default function CartographieContent() {
         setLoading(false);
       }
     };
-    
+   
     fetchData();
   }, []);
 
   // Filtrer les descentes selon les couleurs sélectionnées
   useEffect(() => {
     const descentesLayer = layers.find(l => l.name === 'Points de descente');
-    
+   
     if (!descentesLayer?.active) {
       setFilteredDescentes([]);
       return;
     }
-
     const filtered = descentes.filter(descente => {
       const couleur = getDescenteCouleur(descente);
       return filtreCouleurs[couleur as keyof typeof filtreCouleurs];
     });
-
     setFilteredDescentes(filtered);
   }, [layers, filtreCouleurs, descentes]);
 
@@ -949,13 +940,13 @@ export default function CartographieContent() {
     if (mapRef.current) {
       const currentZoom = mapRef.current.getZoom();
       let targetZoom;
-      
+     
       if (isSatelliteView) {
         targetZoom = 22;
       } else {
         targetZoom = 20;
       }
-      
+     
       if (currentZoom < targetZoom) {
         mapRef.current.setZoom(targetZoom);
       } else {
@@ -968,7 +959,7 @@ export default function CartographieContent() {
   const changeMapStyle = () => {
     const newSatelliteView = !isSatelliteView;
     setIsSatelliteView(newSatelliteView);
-    
+   
     if (mapRef.current && newSatelliteView) {
       const currentZoom = mapRef.current.getZoom();
       if (currentZoom >= 20) {
@@ -985,11 +976,10 @@ export default function CartographieContent() {
   const handleSearch = () => {
     try {
       let lat: number, lng: number;
-
       if (searchType === 'latlon') {
         lat = parseFloat(searchLat);
         lng = parseFloat(searchLon);
-        
+       
         if (isNaN(lat) || isNaN(lng)) {
           alert("Coordonnées Lat/Lon invalides");
           return;
@@ -997,20 +987,18 @@ export default function CartographieContent() {
       } else {
         const x = parseFloat(searchX);
         const y = parseFloat(searchY);
-        
+       
         if (isNaN(x) || isNaN(y)) {
           alert("Coordonnées Laborde invalides");
           return;
         }
-
         [lat, lng] = convertLabordeToWGS84(x, y);
       }
-
       const points = [...filteredDescentes.map(d => ({ ...d, type: 'descente' as const }))];
-      
+     
       let closestPoint = null;
       let minDistance = Infinity;
-      
+     
       points.forEach(point => {
         if (point.lat && point.lng && !isNaN(point.lat) && !isNaN(point.lng)) {
           const distance = Math.sqrt(Math.pow(point.lat - lat, 2) + Math.pow(point.lng - lng, 2));
@@ -1020,28 +1008,28 @@ export default function CartographieContent() {
           }
         }
       });
-      
+     
       const tolerance = 0.01;
-      
+     
       if (closestPoint && minDistance < tolerance) {
         setSearchResult(closestPoint);
         setSearchMarker([lat, lng]);
         setSelectedDescente(closestPoint);
-        
+       
         if (mapRef.current) {
           mapRef.current.setView([lat, lng], 16);
         }
       } else {
         setSearchResult(null);
         setSearchMarker([lat, lng]);
-        
+       
         if (mapRef.current) {
           mapRef.current.setView([lat, lng], 16);
         }
-        
+       
         alert("Aucune descente trouvée à proximité de ces coordonnées.");
       }
-      
+     
       setShowSearchModal(false);
     } catch (error) {
       console.error("Erreur lors de la recherche:", error);
@@ -1074,13 +1062,11 @@ export default function CartographieContent() {
     <div className="h-[91vh] flex flex-col bg-slate-50">
       {/* Contenu principal: Carte + Panneaux */}
       <div className="flex-1 flex overflow-hidden">
-        
-        {/* Carte */}
-        <div className={`transition-all duration-300 relative ${
-          showLayersPanel || showListPanel ? 'w-full lg:w-2/3' : 'w-full'
-        }`}>
-          <div className="bg-white rounded-lg h-full overflow-hidden relative">
-            
+       
+        {/* Carte - MODIFIÉ ICI */}
+        <div className={`flex-grow transition-all duration-300 ${showLayersPanel || showListPanel ? 'lg:pr-1/4' : 'pr-0'}`}>
+          <div className="bg-white rounded-lg h-full overflow-hidden relative" style={{ right: 0 }}>
+           
             {loading ? (
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center">
@@ -1094,9 +1080,9 @@ export default function CartographieContent() {
                 </div>
               </div>
             ) : (
-              <MapContainer 
-                center={[-18.8792, 47.5079]} 
-                zoom={6} 
+              <MapContainer
+                center={[-18.8792, 47.5079]}
+                zoom={6}
                 style={{ height: "100%", width: "100%" }}
                 ref={mapRef}
                 zoomControl={false}
@@ -1126,36 +1112,36 @@ export default function CartographieContent() {
                   maxZoom={22}
                   subdomains={['mt0', 'mt1', 'mt2', 'mt3']}
                 />
-
+                
                 {/* Couche Shapefile (limites communales) */}
                 {layers.find(l => l.name === 'Limites communales')?.active && (
                   <ShapefileLayer />
                 )}
-
+                
                 {/* Couche Cadastrale (parcelles) */}
                 {layers.find(l => l.name === 'Parcelles cadastrales')?.active && (
                   <CadastreLayer />
                 )}
-
+                
                 {/* Couche Titres Réquisition */}
                 {layers.find(l => l.name === 'Titres réquisition')?.active && (
                   <TitreRequisitionLayer />
                 )}
-
+                
                 {/* FitBounds seulement si on a des coordonnées valides */}
                 {filteredDescentes.length > 0 && (
-                  <FitBounds data={filteredDescentes.filter(d => 
+                  <FitBounds data={filteredDescentes.filter(d =>
                     d.lat && d.lng && !isNaN(d.lat) && !isNaN(d.lng)
                   )} />
                 )}
-
+                
                 {/* Markers des descentes */}
                 {filteredDescentes
                   .filter(d => d.lat !== undefined && d.lng !== undefined && !isNaN(d.lat) && !isNaN(d.lng))
                   .map((d, i) => (
-                  <Marker 
-                    key={i} 
-                    position={[d.lat, d.lng]} 
+                  <Marker
+                    key={i}
+                    position={[d.lat, d.lng]}
                     icon={getDescenteIcon(d)}
                     eventHandlers={{
                       click: () => setSelectedDescente(d)
@@ -1172,7 +1158,7 @@ export default function CartographieContent() {
                         }`}>
                           {getDescenteStatut(d)}
                         </div>
-                        
+                       
                         {/* En-tête */}
                         <div className="border-b pb-3">
                           <h3 className="font-bold text-lg text-slate-800">
@@ -1188,7 +1174,7 @@ export default function CartographieContent() {
                             )}
                           </p>
                         </div>
-                        
+                       
                         {/* État des étapes */}
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                           <h4 className="font-semibold text-slate-700 text-sm mb-2 flex items-center gap-1">
@@ -1224,7 +1210,7 @@ export default function CartographieContent() {
                             </div>
                           </div>
                         </div>
-                        
+                       
                         {/* Informations principales */}
                         <div className="grid grid-cols-1 gap-3">
                           {/* Références */}
@@ -1259,7 +1245,7 @@ export default function CartographieContent() {
                               )}
                             </div>
                           </div>
-                          
+                         
                           {/* Localisation */}
                           <div>
                             <h4 className="font-semibold text-slate-700 text-sm mb-1 flex items-center gap-1">
@@ -1295,7 +1281,7 @@ export default function CartographieContent() {
                               </div>
                             </div>
                           </div>
-                          
+                         
                           {/* Coordonnées */}
                           <div>
                             <h4 className="font-semibold text-slate-700 text-sm mb-1 flex items-center gap-1">
@@ -1335,7 +1321,7 @@ export default function CartographieContent() {
                               </div>
                             )}
                           </div>
-                          
+                         
                           {/* Personnes concernées */}
                           <div>
                             <h4 className="font-semibold text-slate-700 text-sm mb-1 flex items-center gap-1">
@@ -1378,7 +1364,7 @@ export default function CartographieContent() {
                               </div>
                             </div>
                           </div>
-                          
+                         
                           {/* Infractions et actions */}
                           <div>
                             <h4 className="font-semibold text-slate-700 text-sm mb-1 flex items-center gap-1">
@@ -1388,7 +1374,7 @@ export default function CartographieContent() {
                               <div>
                                 <span className="font-medium">Infraction:</span>
                                 <div className="text-slate-600 mt-1">
-                                  {Array.isArray(d.infraction) 
+                                  {Array.isArray(d.infraction)
                                     ? d.infraction.map((inf: string, idx: number) => (
                                         <div key={idx} className="flex items-start gap-1 mb-1">
                                           <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0"></div>
@@ -1423,7 +1409,7 @@ export default function CartographieContent() {
                               )}
                             </div>
                           </div>
-                          
+                         
                           {/* Rendez-vous */}
                           {d.date_rendez_vous && (
                             <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
@@ -1436,13 +1422,13 @@ export default function CartographieContent() {
                               </div>
                             </div>
                           )}
-                          
+                         
                           {/* Pièces à fournir */}
                           {d.dossier_a_fournir && (
                             <div className="bg-blue-50 p-2 rounded border border-blue-200">
                               <h4 className="font-semibold text-blue-700 text-sm mb-1">📄 Pièces à fournir</h4>
                               <ul className="text-xs text-blue-600 list-disc pl-4">
-                                {Array.isArray(d.dossier_a_fournir) 
+                                {Array.isArray(d.dossier_a_fournir)
                                   ? d.dossier_a_fournir.map((piece: string, idx: number) => (
                                       <li key={idx}>{piece}</li>
                                     ))
@@ -1451,7 +1437,7 @@ export default function CartographieContent() {
                               </ul>
                             </div>
                           )}
-                          
+                         
                           {/* Informations techniques */}
                           <div className="border-t pt-3">
                             <h4 className="font-semibold text-slate-700 text-sm mb-1">📋 Informations techniques</h4>
@@ -1469,11 +1455,11 @@ export default function CartographieContent() {
                             </div>
                           </div>
                         </div>
-                        
+                       
                         {/* Bouton d'action */}
                         <div className="pt-3 border-t">
-                          <a 
-                            href={`/descentes/${d.id}`} 
+                          <a
+                            href={`/descentes/${d.id}`}
                             className="inline-block w-full text-center bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded text-sm font-medium transition-colors"
                           >
                             Voir les détails complets
@@ -1483,7 +1469,7 @@ export default function CartographieContent() {
                     </Popup>
                   </Marker>
                 ))}
-                
+               
                 {/* Marqueur de recherche */}
                 {searchMarker && (
                   <Marker position={searchMarker} icon={searchIcon}>
@@ -1500,14 +1486,14 @@ export default function CartographieContent() {
                 )}
               </MapContainer>
             )}
-
+            
             {/* Boutons d'action: Filtres, Liste et Recherche */}
             <div className="absolute top-4 left-4 flex flex-col gap-2 z-[1000] lg:flex-row">
               <button
                 onClick={() => setShowLayersPanel(!showLayersPanel)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg transition-colors ${
-                  showLayersPanel 
-                    ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                  showLayersPanel
+                    ? 'bg-blue-500 text-white hover:bg-blue-600'
                     : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
                 }`}
               >
@@ -1517,8 +1503,8 @@ export default function CartographieContent() {
               <button
                 onClick={() => setShowListPanel(!showListPanel)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg transition-colors ${
-                  showListPanel 
-                    ? 'bg-purple-500 text-white hover:bg-purple-600' 
+                  showListPanel
+                    ? 'bg-purple-500 text-white hover:bg-purple-600'
                     : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
                 }`}
               >
@@ -1533,14 +1519,14 @@ export default function CartographieContent() {
                 <span className="text-sm font-medium">Rechercher</span>
               </button>
             </div>
-
+            
             {/* Contrôles de carte */}
             <div className="absolute top-4 right-4 flex flex-col gap-2 z-[1000]">
-              <button 
+              <button
                 onClick={changeMapStyle}
                 className={`w-10 h-10 rounded-lg shadow-lg flex items-center justify-center transition-colors ${
-                  isSatelliteView 
-                    ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                  isSatelliteView
+                    ? 'bg-blue-500 text-white hover:bg-blue-600'
                     : 'bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
@@ -1550,37 +1536,37 @@ export default function CartographieContent() {
                   <Satellite className="w-5 h-5" />
                 )}
               </button>
-              
+             
               <div className="flex flex-col rounded-lg shadow-lg overflow-hidden">
-                <button 
+                <button
                   onClick={() => mapRef.current?.zoomIn()}
                   className="w-10 h-10 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors border-b"
                 >
                   <ZoomIn className="w-5 h-5 text-slate-700" />
                 </button>
-                <button 
+                <button
                   onClick={() => mapRef.current?.zoomOut()}
                   className="w-10 h-10 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors"
                 >
                   <ZoomOut className="w-5 h-5 text-slate-700" />
                 </button>
               </div>
-              
-              <button 
+             
+              <button
                 onClick={maximizeZoom}
                 className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center hover:bg-slate-50 transition-colors"
               >
                 <Maximize2 className="w-5 h-5 text-slate-700" />
               </button>
-              
-              <button 
+             
+              <button
                 onClick={() => mapRef.current?.fitWorld()}
                 className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center hover:bg-slate-50 transition-colors"
               >
                 <Home className="w-5 h-5 text-slate-700" />
               </button>
             </div>
-
+            
             {/* Info zoom actuel */}
             <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-2 z-[1000]">
               <div className="flex items-center gap-2 text-xs">
@@ -1595,14 +1581,14 @@ export default function CartographieContent() {
                 </div>
               </div>
             </div>
-
+            
             {/* Légende */}
             <div className={`absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 z-[1000] max-w-[220px] transition-all duration-300 ${
               showLegend ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold text-slate-800">Légende</h4>
-                <button 
+                <button
                   onClick={() => setShowLegend(false)}
                   className="text-slate-500 hover:text-slate-700 p-0.5"
                 >
@@ -1650,7 +1636,7 @@ export default function CartographieContent() {
                 </div>
               </div>
             </div>
-
+            
             {/* Bouton pour afficher la légende si cachée */}
             {!showLegend && (
               <button
@@ -1661,7 +1647,7 @@ export default function CartographieContent() {
                 <span>Légende</span>
               </button>
             )}
-
+            
             {/* Résultat de recherche */}
             {searchResult && (
               <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1001] bg-white p-4 rounded-lg shadow-lg max-w-md">
@@ -1726,7 +1712,7 @@ export default function CartographieContent() {
                 </div>
               </div>
             )}
-
+            
             {/* Avertissement sur les problèmes de coordonnées */}
             {coordinateIssues.length > 0 && (
               <div className="absolute bottom-20 left-4 bg-yellow-50 border border-yellow-200 rounded-lg shadow-lg p-3 z-[1000] max-w-sm">
@@ -1735,7 +1721,7 @@ export default function CartographieContent() {
                     <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
                     Avertissements coordonnées
                   </h4>
-                  <button 
+                  <button
                     onClick={() => setCoordinateIssues([])}
                     className="text-yellow-600 hover:text-yellow-800 text-sm"
                   >
@@ -1752,11 +1738,11 @@ export default function CartographieContent() {
             )}
           </div>
         </div>
-
+        
         {/* Panneau latéral des filtres */}
         {showLayersPanel && (
-          <div className="w-full lg:w-1/4 bg-white border-l border-slate-200 overflow-y-auto">
-            <div className="p-4 lg:p-6 space-y-6">
+          <div className="w-full lg:w-1/4 bg-white border-l border-slate-200 overflow-y-auto absolute lg:relative right-0 h-full z-10">
+            <div className="p-4 lg:p-6 space-y-6 h-full">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Filter className="w-5 h-5 text-slate-700" />
@@ -1769,7 +1755,7 @@ export default function CartographieContent() {
                     <X size={20} />
                 </button>
               </div>
-
+              
               {/* Filtres des couches */}
               <div className="pt-4 border-t border-slate-200">
                 <h3 className="font-semibold text-slate-800 mb-3">Couches de la Carte</h3>
@@ -1794,7 +1780,7 @@ export default function CartographieContent() {
                   ))}
                 </div>
               </div>
-
+              
               {/* Filtres par statut */}
               {layers.find(l => l.name === 'Points de descente')?.active && (
                 <div className="pt-4 border-t border-slate-200">
@@ -1871,7 +1857,7 @@ export default function CartographieContent() {
                   </div>
                 </div>
               )}
-
+              
               {/* Statistiques */}
               <div className="bg-slate-50 rounded-lg p-4 mt-4 border-t border-slate-200">
                 <h3 className="font-bold text-slate-900 mb-3">Statistiques</h3>
@@ -1904,7 +1890,7 @@ export default function CartographieContent() {
                     <span className="text-sm text-slate-600">Zoom maximum</span>
                     <span className="font-semibold text-slate-900">{isSatelliteView ? '22 (Satellite)' : '20 (Carte)'}</span>
                   </div>
-                  
+                 
                   {/* Information Shapefile */}
                   <div className="flex justify-between items-center pt-2 border-t border-slate-200">
                     <div className="flex items-center gap-2">
@@ -1912,14 +1898,14 @@ export default function CartographieContent() {
                       <span className="text-sm text-slate-600">Limites communales</span>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded font-medium ${
-                      layers.find(l => l.name === 'Limites communales')?.active 
-                        ? 'bg-blue-100 text-blue-800' 
+                      layers.find(l => l.name === 'Limites communales')?.active
+                        ? 'bg-blue-100 text-blue-800'
                         : 'bg-slate-100 text-slate-600'
                     }`}>
                       {layers.find(l => l.name === 'Limites communales')?.active ? 'Activé' : 'Désactivé'}
                     </span>
                   </div>
-                  
+                 
                   {/* Information Cadastre */}
                   <div className="flex justify-between items-center pt-2">
                     <div className="flex items-center gap-2">
@@ -1927,14 +1913,14 @@ export default function CartographieContent() {
                       <span className="text-sm text-slate-600">Parcelles cadastrales</span>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded font-medium ${
-                      layers.find(l => l.name === 'Parcelles cadastrales')?.active 
-                        ? 'bg-green-100 text-green-800' 
+                      layers.find(l => l.name === 'Parcelles cadastrales')?.active
+                        ? 'bg-green-100 text-green-800'
                         : 'bg-slate-100 text-slate-600'
                     }`}>
                       {layers.find(l => l.name === 'Parcelles cadastrales')?.active ? 'Activé' : 'Désactivé'}
                     </span>
                   </div>
-                  
+                 
                   {/* Information Titres Réquisition */}
                   <div className="flex justify-between items-center pt-2">
                     <div className="flex items-center gap-2">
@@ -1942,14 +1928,14 @@ export default function CartographieContent() {
                       <span className="text-sm text-slate-600">Titres réquisition</span>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded font-medium ${
-                      layers.find(l => l.name === 'Titres réquisition')?.active 
-                        ? 'bg-purple-100 text-purple-800' 
+                      layers.find(l => l.name === 'Titres réquisition')?.active
+                        ? 'bg-purple-100 text-purple-800'
                         : 'bg-slate-100 text-slate-600'
                     }`}>
                       {layers.find(l => l.name === 'Titres réquisition')?.active ? 'Activé' : 'Désactivé'}
                     </span>
                   </div>
-                  
+                 
                   {coordinateIssues.length > 0 && (
                     <div className="flex justify-between items-center text-yellow-600">
                       <span className="text-sm">Avertissements coordonnées</span>
@@ -1961,11 +1947,11 @@ export default function CartographieContent() {
             </div>
           </div>
         )}
-
+        
         {/* Panneau latéral de liste des descentes */}
         {showListPanel && (
-          <div className="w-full lg:w-1/4 bg-white border-l border-slate-200 overflow-y-auto">
-            <div className="p-4 lg:p-6">
+          <div className="w-full lg:w-1/4 bg-white border-l border-slate-200 overflow-y-auto absolute lg:relative right-0 h-full z-10">
+            <div className="p-4 lg:p-6 h-full">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <List className="w-5 h-5 text-slate-700" />
@@ -1978,7 +1964,7 @@ export default function CartographieContent() {
                   <X size={20} />
                 </button>
               </div>
-              
+             
               {loading ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
@@ -1991,7 +1977,7 @@ export default function CartographieContent() {
               ) : (
                 <div className="space-y-2">
                   {descentes.map(descente => (
-                    <div 
+                    <div
                       key={descente.id}
                       className={`p-3 border rounded-lg cursor-pointer hover:bg-slate-50 transition-colors ${
                         selectedDescente?.id === descente.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'
@@ -2069,7 +2055,7 @@ export default function CartographieContent() {
           </div>
         )}
       </div>
-
+      
       {/* Modal de recherche */}
       {showSearchModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[1002] flex items-center justify-center p-4">
@@ -2083,7 +2069,6 @@ export default function CartographieContent() {
                 <X size={20} />
               </button>
             </div>
-
             <div className="p-4">
               <div className="flex space-x-2 mb-4">
                 <button
@@ -2107,7 +2092,6 @@ export default function CartographieContent() {
                   Laborde (XY)
                 </button>
               </div>
-
               {searchType === 'latlon' ? (
                 <div className="space-y-3">
                   <div>
@@ -2167,7 +2151,6 @@ export default function CartographieContent() {
                   </div>
                 </div>
               )}
-
               <div className="flex space-x-2 mt-6">
                 <button
                   onClick={handleSearch}

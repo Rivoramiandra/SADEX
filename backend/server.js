@@ -15,14 +15,14 @@ const shapefileRoutes = require('./routes/ShapefileRoutes');
 const cadastreRoutes = require('./routes/cadastreRoutes');
 const titreRequisitionRoutes = require('./routes/titreRequisitionRoutes');
 const titresSansNomRoutes = require("./routes/titresansnomRoutes");
-
+const fokontanyRoutes = require('./routes/fokontanyRoutes');
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:3000',  // URL du frontend
+    origin: 'http://localhost:3000',  
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
   },
@@ -37,13 +37,13 @@ app.use(express.json());
 app.use("/api/descentes", descenteRoutes);
 app.use('/api/rendezvousft', rendezvousFtRoutes);
 app.use('/api/ft', ftRoutes);
-app.use('/api/avis-de-paiement', avisDePaiementRoutes); // Ajout de la nouvelle route
+app.use('/api/avis-de-paiement', avisDePaiementRoutes); 
 app.use('/api', paiementRoutes);
-app.use('/api/shapefile', shapefileRoutes);// 🔥 CORRECTION: Ajout de la route Shapefile
+app.use('/api/shapefile', shapefileRoutes);
 app.use('/api/cadastre', cadastreRoutes);
 app.use('/api/titre-requisition', titreRequisitionRoutes);
 app.use("/api/titres-sans-nom", titresSansNomRoutes);
-
+app.use('/api/fokontany', fokontanyRoutes);
 // Route de test santé du serveur
 app.get('/api/health', (req, res) => {
   res.json({ 
