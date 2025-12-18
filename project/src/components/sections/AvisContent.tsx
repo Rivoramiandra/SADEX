@@ -316,9 +316,6 @@ export default function AvisContent() {
       <div>
         <h1 className="text-3xl font-bold text-slate-900 mb-2">Avis de paiement</h1>
         <p className="text-slate-600">Gestion des paiements et transactions financières</p>
-        <p className="text-sm text-slate-500 mt-1">
-          Cette section affiche uniquement les procès-verbaux avec dossier complet
-        </p>
       </div>
 
       {/* Cartes de statistiques */}

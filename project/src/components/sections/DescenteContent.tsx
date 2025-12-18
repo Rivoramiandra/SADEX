@@ -10,37 +10,55 @@ import { useState, useEffect } from 'react';
 import FormulaireDescente from '../sections/RapportContent';
 import toast from 'react-hot-toast';
 
-// Définir le type Descente
+// Définir le type Descente basé sur les données de l'API
 interface Descente {
-  id: number;
-  date_desce?: string;
+  id?: number;
+  // Champs retournés par l'API
+  date: string;
+  heure: string;
+  date_rdv_ft: string;
+  heure_rdv_ft: string;
+  n_pv_pat: string | null;
+  n_fifafi: string | null;
+  type_verbalisateur: string;
+  nom_verbalisateur: string;
+  pers_verb: string;
+  nom_pers: string;
+  adresse: string;
+  contact: string;
+  dist: string;
+  comm: string;
+  fkt: string;
+  localisation: string | null;
+  superficie: string;
+  x: number;
+  y: number;
+  constat: string[];
+  action: string[];
+  modele_pv: string;
+  reference: string;
+  pieces_a_fournir: string[];
+  statut_descente: string;
+  polygon_geojson: any | null;
+  has_polygon: boolean;
+  polygon_points?: Array<{longitude: number, latitude: number, order: number}>;
+  // Champs optionnels de l'interface précédente
   date_descente?: string;
   heure_descente?: string;
   date_rendez_vous?: string;
   heure_rendez_vous?: string;
-  n_pv_pat?: string;
-  n_fifafi?: string;
-  type_verbalisateur?: string;
-  nom_verbalisateur?: string;
   personne_r?: string;
   nom_personne_r?: string;
   commune?: string;
   fokontany?: string;
   district?: string;
-  localisation?: string;
-  superficie?: string;
   x_coord?: string;
   y_coord?: string;
   infraction?: string;
   actions?: string;
-  modele_pv?: string;
-  reference?: string;
-  contact_r?: string;
-  adresse_r?: string;
-  dossier_a_fournir?: string | any;
+  dossier_a_fournir?: string[];
   createdAt?: string;
   updatedAt?: string;
-  [key: string]: any;
 }
 
 // Interface pour le modal de confirmation
@@ -134,17 +152,19 @@ function ConfirmationModal({
 
 // Fonction utilitaire pour afficher n'importe quelle valeur
 const displayValue = (value: any): string => {
-  if (value === null || value === undefined) return 'N/A';
+  if (value === null || value === undefined) return '-';
   
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? '-' : trimmed;
+  }
+  
   if (typeof value === 'number') return value.toString();
   if (typeof value === 'boolean') return value ? 'Oui' : 'Non';
   
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object') {
-    if (value.documents) return String(value.documents);
-    if (value.urgent) return String(value.urgent);
-    return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '-';
+    return value.join(', ');
   }
   
   return String(value);
@@ -196,14 +216,13 @@ export default function DescenteContent() {
       const data = await response.json();
       console.log('📦 Données reçues de l\'API:', data);
       
-      if (data.length > 0) {
-        console.log('🔍 Structure du premier élément:');
-        Object.keys(data[0]).forEach(key => {
-          console.log(`  ${key}:`, data[0][key], `(type: ${typeof data[0][key]})`);
-        });
-      }
+      // Ajouter un id basé sur l'index si non présent
+      const dataWithIds = data.map((item: Descente, index: number) => ({
+        ...item,
+        id: index + 1
+      }));
       
-      setDescentes(data);
+      setDescentes(dataWithIds);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors du chargement des données');
@@ -230,7 +249,7 @@ export default function DescenteContent() {
   // Gérer la soumission du formulaire
   const handleSubmitDescente = async (formData: any) => {
     try {
-      const url = editingDescente 
+      const url = editingDescente && editingDescente.id
         ? `http://localhost:3000/api/descentes/${editingDescente.id}`
         : 'http://localhost:3000/api/descentes';
       
@@ -309,24 +328,48 @@ export default function DescenteContent() {
       displayValue(descente.n_pv_pat).toLowerCase().includes(searchTermLower) ||
       displayValue(descente.n_fifafi).toLowerCase().includes(searchTermLower) ||
       displayValue(descente.nom_verbalisateur).toLowerCase().includes(searchTermLower) ||
-      displayValue(descente.nom_personne_r).toLowerCase().includes(searchTermLower) ||
-      displayValue(descente.commune).toLowerCase().includes(searchTermLower);
+      displayValue(descente.nom_pers).toLowerCase().includes(searchTermLower) ||
+      displayValue(descente.comm).toLowerCase().includes(searchTermLower) ||
+      displayValue(descente.reference).toLowerCase().includes(searchTermLower) ||
+      displayValue(descente.localisation).toLowerCase().includes(searchTermLower) ||
+      displayValue(descente.dist).toLowerCase().includes(searchTermLower);
     
     return matchesSearch;
   });
 
   // Formater la date pour l'affichage
   const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '-';
     
     try {
-      if (dateString.includes('T')) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('fr-FR');
-      }
-      return dateString;
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      
+      return date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
     } catch {
       return dateString;
+    }
+  };
+
+  // Formater l'heure pour l'affichage
+  const formatTime = (timeString?: string) => {
+    if (!timeString) return '-';
+    
+    try {
+      // Si l'heure est au format HH:MM:SS
+      if (timeString.includes(':')) {
+        const parts = timeString.split(':');
+        if (parts.length >= 2) {
+          return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+        }
+      }
+      return timeString;
+    } catch {
+      return timeString;
     }
   };
 
@@ -339,27 +382,36 @@ export default function DescenteContent() {
   // Gérer l'export
   const handleExport = () => {
     const dataToExport = filteredDescentes;
-    const headers = ['ID', 'Date Descente', 'Verbalisateur', 'Personne Concernée', 'Commune', 'Infraction'];
+    const headers = ['ID', 'Référence', 'Date Descente', 'Heure', 'PV PAT', 'FIFAFI', 'Verbalisateur', 'Personne', 'Commune', 'Infraction', 'Superficie'];
     const csvRows = [
       headers.join(','),
       ...dataToExport.map(descente => [
-        `DS-${descente.id}`,
-        formatDate(descente.date_descente || descente.date_desce),
-        displayValue(descente.nom_verbalisateur),
-        displayValue(descente.nom_personne_r),
-        displayValue(descente.commune),
-        displayValue(descente.infraction)
-      ].map(field => `"${field}"`).join(','))
+        `DS-${descente.id || '-'}`,
+        `"${displayValue(descente.reference)}"`,
+        `"${formatDate(descente.date)}"`,
+        `"${formatTime(descente.heure)}"`,
+        `"${displayValue(descente.n_pv_pat)}"`,
+        `"${displayValue(descente.n_fifafi)}"`,
+        `"${displayValue(descente.nom_verbalisateur)}"`,
+        `"${displayValue(descente.nom_pers)}"`,
+        `"${displayValue(descente.comm)}"`,
+        `"${displayValue(descente.constat)}"`,
+        `"${displayValue(descente.superficie)}"`
+      ].join(','))
     ];
     
     const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv' });
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `descentes-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+    
+    toast.success('Export CSV réussi!');
   };
 
   // Calculer les indices pour la pagination
@@ -425,8 +477,8 @@ export default function DescenteContent() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Détails de la Descente DS-{selectedDescente.id}</h2>
-                <p className="text-slate-600 text-sm mt-1">{selectedDescente.reference}</p>
+                <h2 className="text-xl font-bold text-slate-900">Détails de la Descente DS-{selectedDescente.id || '-'}</h2>
+                <p className="text-slate-600 text-sm mt-1">Référence: {displayValue(selectedDescente.reference)}</p>
               </div>
               <button 
                 onClick={() => setShowModal(false)}
@@ -441,24 +493,24 @@ export default function DescenteContent() {
               <div className="bg-slate-50 rounded-lg p-4">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-blue-600" />
-                  Dates
+                  Dates et heures
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Date Descente</label>
-                    <p className="text-slate-900">{formatDate(selectedDescente.date_descente || selectedDescente.date_desce)}</p>
+                    <p className="text-slate-900 font-medium">{formatDate(selectedDescente.date)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Heure Descente</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.heure_descente)}</p>
+                    <p className="text-slate-900 font-medium">{formatTime(selectedDescente.heure)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Date Rendez-vous</label>
-                    <p className="text-slate-900">{formatDate(selectedDescente.date_rendez_vous)}</p>
+                    <p className="text-slate-900 font-medium">{formatDate(selectedDescente.date_rdv_ft)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Heure Rendez-vous</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.heure_rendez_vous)}</p>
+                    <p className="text-slate-900 font-medium">{formatTime(selectedDescente.heure_rdv_ft)}</p>
                   </div>
                 </div>
               </div>
@@ -472,53 +524,53 @@ export default function DescenteContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Type Verbalisateur</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.type_verbalisateur)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.type_verbalisateur)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Nom Verbalisateur</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.nom_verbalisateur)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.nom_verbalisateur)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">PV PAT</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.n_pv_pat)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.n_pv_pat)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">FIFAFI</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.n_fifafi)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.n_fifafi)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Modèle PV</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.modele_pv)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.modele_pv)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Référence</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.reference)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.reference)}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Section Personne */}
+              {/* Section Personne concernée */}
               <div className="bg-slate-50 rounded-lg p-4">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <User className="w-5 h-5 text-blue-600" />
-                  Personne Concernée
+                  Personne concernée
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.personne_r)}</p>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Type de personne</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.pers_verb)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Nom</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.nom_personne_r)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.nom_pers)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Adresse</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.adresse_r)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.adresse)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Contact</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.contact_r)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.contact)}</p>
                   </div>
                 </div>
               </div>
@@ -529,34 +581,34 @@ export default function DescenteContent() {
                   <MapPin className="w-5 h-5 text-blue-600" />
                   Localisation
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">District</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.district)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.dist)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Commune</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.commune)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.comm)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Fokontany</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.fokontany)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.fkt)}</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.localisation)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">X Coord</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.x_coord)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Y Coord</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.y_coord)}</p>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Localisation précise</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.localisation)}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Superficie</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.superficie)}</p>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.superficie)} m²</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Coordonnée X</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.x)}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Coordonnée Y</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.y)}</p>
                   </div>
                 </div>
               </div>
@@ -569,37 +621,58 @@ export default function DescenteContent() {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Infraction</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.infraction)}</p>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Infraction(s)</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.constat)}</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Actions</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.actions)}</p>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Action(s)</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.action)}</p>
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Dossier à Fournir</label>
-                    <p className="text-slate-900">{displayValue(selectedDescente.dossier_a_fournir)}</p>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Pièces à fournir</label>
+                    <p className="text-slate-900 font-medium">{displayValue(selectedDescente.pieces_a_fournir)}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Dates de création/mise à jour */}
+              {/* Section Statut */}
               <div className="bg-slate-50 rounded-lg p-4">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-blue-600" />
-                  Métadonnées
+                  <CheckCircle className="w-5 h-5 text-blue-600" />
+                  Statut
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Créé le</label>
-                    <p className="text-slate-900">{formatDate(selectedDescente.createdAt)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Mis à jour le</label>
-                    <p className="text-slate-900">{formatDate(selectedDescente.updatedAt)}</p>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Statut de la descente</label>
+                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                    selectedDescente.statut_descente === 'Fini' 
+                      ? 'bg-green-100 text-green-800'
+                      : selectedDescente.statut_descente === 'En cours'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {displayValue(selectedDescente.statut_descente)}
                   </div>
                 </div>
               </div>
+
+              {/* Section Polygone */}
+              {selectedDescente.has_polygon && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-green-600" />
+                    Polygone
+                  </h3>
+                  <div className="space-y-2">
+                    <p className="text-slate-700">Cette descente a un polygone géoréférencé.</p>
+                    <p className="text-sm text-slate-600">
+                      {selectedDescente.polygon_points 
+                        ? `${selectedDescente.polygon_points.length} points définis`
+                        : 'Polygone disponible'
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6 flex justify-end gap-3">
@@ -614,9 +687,9 @@ export default function DescenteContent() {
                   setShowModal(false);
                   handleEdit(selectedDescente);
                 }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
               >
-                <Edit className="w-4 h-4 inline-block mr-2" />
+                <Edit className="w-4 h-4" />
                 Modifier
               </button>
             </div>
@@ -626,14 +699,14 @@ export default function DescenteContent() {
 
       {/* En-tête et bouton - masqué quand le formulaire est affiché */}
       {!showForm && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Descente sur terrain</h1>
             <p className="text-slate-600">Gestion des inspections et visites de terrain</p>
           </div>
           <button 
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all font-medium"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all font-medium"
           >
             <Plus className="w-5 h-5" />
             Nouvelle descente
@@ -641,35 +714,35 @@ export default function DescenteContent() {
         </div>
       )}
 
-      {/* Cartes de statistiques - Style FicheContent */}
+      {/* Cartes de statistiques */}
       {!showForm && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { 
               label: 'Total', 
               value: filteredDescentes.length, 
               icon: <Clipboard className="w-6 h-6 text-blue-600" />,
               bgColor: 'bg-blue-100',
-              textColor: 'text-slate-900'
+              textColor: 'text-blue-700'
             },
             { 
               label: 'Avec PV', 
-              value: filteredDescentes.filter(d => d.n_pv_pat).length, 
+              value: filteredDescentes.filter(d => d.n_pv_pat && d.n_pv_pat !== '-').length, 
               icon: <FileText className="w-6 h-6 text-green-600" />,
               bgColor: 'bg-green-100',
               textColor: 'text-green-700'
             },
             { 
               label: 'Avec FIFAFI', 
-              value: filteredDescentes.filter(d => d.n_fifafi).length, 
+              value: filteredDescentes.filter(d => d.n_fifafi && d.n_fifafi !== '-').length, 
               icon: <FileSignature className="w-6 h-6 text-orange-600" />,
               bgColor: 'bg-orange-100',
               textColor: 'text-orange-700'
             },
             { 
-              label: 'Avec RDV', 
-              value: filteredDescentes.filter(d => d.date_rendez_vous).length, 
-              icon: <Calendar className="w-6 h-6 text-purple-600" />,
+              label: 'Avec Polygone', 
+              value: filteredDescentes.filter(d => d.has_polygon).length, 
+              icon: <MapPin className="w-6 h-6 text-purple-600" />,
               bgColor: 'bg-purple-100',
               textColor: 'text-purple-700'
             }
@@ -692,45 +765,47 @@ export default function DescenteContent() {
       {/* Contenu principal (tableau) - masqué quand le formulaire est affiché */}
       {!showForm && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-4 mb-6">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Rechercher par ID, PV, FIFAFI, nom..."
+                placeholder="Rechercher par PV, FIFAFI, nom, commune, référence..."
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
-            <select
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={pageSize}
-              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            >
-              <option value="5">5 par page</option>
-              <option value="10">10 par page</option>
-              <option value="20">20 par page</option>
-              <option value="50">50 par page</option>
-            </select>
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              >
+                <option value="5">5 par page</option>
+                <option value="10">10 par page</option>
+                <option value="20">20 par page</option>
+                <option value="50">50 par page</option>
+              </select>
 
-            <button 
-              className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              onClick={handleExport}
-              disabled={filteredDescentes.length === 0}
-            >
-              <Download className="w-4 h-4" />
-              Exporter
-            </button>
+              <button 
+                className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                onClick={handleExport}
+                disabled={filteredDescentes.length === 0}
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Exporter</span>
+              </button>
 
-            <button 
-              onClick={fetchDescentes}
-              className="flex items-center gap-2 px-4 py-2 border border-blue-300 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Actualiser
-            </button>
+              <button 
+                onClick={fetchDescentes}
+                className="flex items-center gap-2 px-4 py-2 border border-blue-300 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">Actualiser</span>
+              </button>
+            </div>
           </div>
 
           {filteredDescentes.length === 0 ? (
@@ -739,11 +814,19 @@ export default function DescenteContent() {
               <h3 className="text-lg font-semibold text-slate-700 mb-2">
                 {searchTerm ? 'Aucune descente trouvée' : 'Aucune descente enregistrée'}
               </h3>
-              <p className="text-slate-500">
+              <p className="text-slate-500 mb-4">
                 {searchTerm 
                   ? 'Aucune descente ne correspond à vos critères de recherche.' 
                   : 'Commencez par créer votre première descente.'}
               </p>
+              {!searchTerm && (
+                <button 
+                  onClick={() => setShowForm(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Créer une descente
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -751,185 +834,203 @@ export default function DescenteContent() {
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         ID
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         PV / FIFAFI
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Dates
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Verbalisation
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Localisation
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Infraction
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200">
-                    {filteredDescentes.slice(startIndex, endIndex).map((descente) => (
-                      <tr key={descente.id} className="hover:bg-slate-50 transition-colors">
-                        {/* ID Descente */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mr-3">
-                              <Clipboard className="w-4 h-4 text-white" />
-                            </div>
-                            <div>
-                              <div className="text-sm font-medium text-slate-900">DS-{descente.id}</div>
-                              <div className="text-xs text-slate-500">{displayValue(descente.reference)}</div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* PV / FIFAFI */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
+                    {filteredDescentes.slice(startIndex, endIndex).map((descente, index) => {
+                      const descenteId = descente.id || startIndex + index + 1;
+                      
+                      return (
+                        <tr key={descenteId} className="hover:bg-slate-50 transition-colors">
+                          {/* ID Descente */}
+                          <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center">
-                              <FileText className="w-4 h-4 mr-2 text-blue-500" />
-                              <span className="text-sm font-medium text-slate-900">
-                                {displayValue(descente.n_pv_pat) || 'N/A'}
-                              </span>
-                            </div>
-                            <div className="flex items-center">
-                              <FileSignature className="w-4 h-4 mr-2 text-green-500" />
-                              <span className="text-sm text-slate-700">
-                                {displayValue(descente.n_fifafi) || 'N/A'}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Dates */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div>
-                              <div className="text-sm text-slate-900">
-                                {formatDate(descente.date_descente || descente.date_desce)}
+                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mr-3">
+                                <Clipboard className="w-4 h-4 text-white" />
                               </div>
-                              <div className="text-xs text-slate-500 flex items-center">
-                                <Clock className="w-3 h-3 mr-1" />
-                                {displayValue(descente.heure_descente)}
+                              <div>
+                                <div className="text-sm font-medium text-slate-900">DS-{descenteId}</div>
+                                <div className="text-xs text-slate-500">{displayValue(descente.reference)}</div>
                               </div>
                             </div>
-                            {descente.date_rendez_vous && (
-                              <div className="pt-2 border-t border-slate-100">
-                                <div className="text-sm text-orange-700">
-                                  RDV: {formatDate(descente.date_rendez_vous)}
+                          </td>
+
+                          {/* PV / FIFAFI */}
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              {descente.n_pv_pat && descente.n_pv_pat !== '-' && (
+                                <div className="flex items-center">
+                                  <FileText className="w-4 h-4 mr-2 text-blue-500" />
+                                  <span className="text-sm font-medium text-slate-900">
+                                    {displayValue(descente.n_pv_pat)}
+                                  </span>
+                                </div>
+                              )}
+                              {descente.n_fifafi && descente.n_fifafi !== '-' && (
+                                <div className="flex items-center">
+                                  <FileSignature className="w-4 h-4 mr-2 text-green-500" />
+                                  <span className="text-sm text-slate-700">
+                                    {displayValue(descente.n_fifafi)}
+                                  </span>
+                                </div>
+                              )}
+                              {(!descente.n_pv_pat || descente.n_pv_pat === '-') && 
+                               (!descente.n_fifafi || descente.n_fifafi === '-') && (
+                                <span className="text-sm text-slate-400">-</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Dates */}
+                          <td className="px-4 py-3">
+                            <div className="space-y-2">
+                              <div>
+                                <div className="text-sm text-slate-900">
+                                  {formatDate(descente.date)}
+                                </div>
+                                <div className="text-xs text-slate-500 flex items-center">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  {formatTime(descente.heure)}
+                                </div>
+                              </div>
+                              {descente.date_rdv_ft && (
+                                <div className="pt-2 border-t border-slate-100">
+                                  <div className="text-xs text-orange-700 font-medium">
+                                    RDV: {formatDate(descente.date_rdv_ft)}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {formatTime(descente.heure_rdv_ft)}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Verbalisation */}
+                          <td className="px-4 py-3">
+                            <div className="space-y-2">
+                              <div>
+                                <div className="text-sm font-medium text-slate-900">
+                                  {displayValue(descente.nom_verbalisateur)}
                                 </div>
                                 <div className="text-xs text-slate-500">
-                                  {displayValue(descente.heure_rendez_vous)}
+                                  {displayValue(descente.type_verbalisateur)}
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        </td>
+                              <div className="pt-2 border-t border-slate-100">
+                                <div className="text-sm text-slate-700">
+                                  {displayValue(descente.nom_pers)}
+                                </div>
+                                <div className="text-xs text-slate-500 flex items-center">
+                                  <Phone className="w-3 h-3 mr-1" />
+                                  {displayValue(descente.contact)}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
 
-                        {/* Verbalisation */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div>
+                          {/* Localisation */}
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
                               <div className="text-sm font-medium text-slate-900">
-                                {displayValue(descente.nom_verbalisateur)}
+                                {displayValue(descente.comm)}
                               </div>
                               <div className="text-xs text-slate-500">
-                                {displayValue(descente.type_verbalisateur)}
+                                {displayValue(descente.fkt)}
                               </div>
+                              <div className="text-xs text-slate-500">
+                                Dist: {displayValue(descente.dist)}
+                              </div>
+                              {descente.superficie && descente.superficie !== '-' && (
+                                <div className="text-xs text-slate-500 flex items-center">
+                                  <Ruler className="w-3 h-3 mr-1" />
+                                  {displayValue(descente.superficie)} m²
+                                </div>
+                              )}
+                              {descente.has_polygon && (
+                                <div className="text-xs text-green-600 flex items-center">
+                                  <MapPin className="w-3 h-3 mr-1" />
+                                  Polygone
+                                </div>
+                              )}
                             </div>
-                            <div className="pt-2 border-t border-slate-100">
-                              <div className="text-sm text-slate-700">
-                                {displayValue(descente.nom_personne_r)}
-                              </div>
-                              <div className="text-xs text-slate-500 flex items-center">
-                                <Phone className="w-3 h-3 mr-1" />
-                                {displayValue(descente.contact_r)}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Localisation */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <div className="text-sm font-medium text-slate-900">
-                              {displayValue(descente.commune)}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {displayValue(descente.fokontany)}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              Dist: {displayValue(descente.district)}
-                            </div>
-                            {descente.superficie && (
-                              <div className="text-xs text-slate-500 flex items-center">
-                                <Ruler className="w-3 h-3 mr-1" />
-                                {displayValue(descente.superficie)}
+                          {/* Infraction */}
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              <div className="text-sm font-medium text-red-700">
+                                {displayValue(descente.constat)}
                               </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Infraction */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <div className="text-sm font-medium text-red-700">
-                              {displayValue(descente.infraction) || 'N/A'}
-                            </div>
-                            <div className="text-xs text-slate-700">
-                              {displayValue(descente.actions)}
-                            </div>
-                            {descente.dossier_a_fournir && (
-                              <div className="text-xs text-blue-600 flex items-center">
-                                <Package className="w-3 h-3 mr-1" />
-                                Dossier requis
+                              <div className="text-xs text-slate-700">
+                                {displayValue(descente.action)}
                               </div>
-                            )}
-                          </div>
-                        </td>
+                              {descente.pieces_a_fournir && descente.pieces_a_fournir.length > 0 && (
+                                <div className="text-xs text-blue-600 flex items-center">
+                                  <Package className="w-3 h-3 mr-1" />
+                                  {descente.pieces_a_fournir.length} pièce(s)
+                                </div>
+                              )}
+                            </div>
+                          </td>
 
-                        {/* Actions */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleViewDetails(descente)}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Voir détails"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEdit(descente)}
-                              className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded transition-colors"
-                              title="Modifier"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(descente.id)}
-                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          {/* Actions */}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleViewDetails(descente)}
+                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                title="Voir détails"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleEdit(descente)}
+                                className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(descenteId)}
+                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
               
-              {/* Pagination - Style FicheContent */}
-              <div className="flex items-center justify-between mt-6">
-                <div className="text-sm text-slate-600">
+              {/* Pagination */}
+              <div className="flex flex-col sm:flex-row items-center justify-between mt-6">
+                <div className="text-sm text-slate-600 mb-4 sm:mb-0">
                   Affichage de {startIndex + 1} à {endIndex} sur {filteredDescentes.length} résultat{filteredDescentes.length !== 1 ? 's' : ''}
                 </div>
                 

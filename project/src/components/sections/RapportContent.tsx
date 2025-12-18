@@ -158,15 +158,17 @@ export default function FormulaireDescente({
   const [showFokontanyDropdown, setShowFokontanyDropdown] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [polygonPoints, setPolygonPoints] = useState<PolygonPoint[]>([]);
+  const [polygonPoints, setPolygonPoints] = useState<PolygonPoint[]>(initialData?.polygon_points || []);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [polygonLayer, setPolygonLayer] = useState<L.Polygon | null>(null);
+  const [coordinateMarker, setCoordinateMarker] = useState<L.Marker | null>(null);
 
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const drawnItemsRef = useRef<L.FeatureGroup>(new L.FeatureGroup());
   const locationLayerRef = useRef<L.LayerGroup>(new L.LayerGroup());
   const fokontanyRef = useRef<HTMLDivElement>(null);
+  const coordinateMarkerRef = useRef<L.Marker | null>(null);
 
   // Charger les données des fokontany depuis l'API
   useEffect(() => {
@@ -192,10 +194,6 @@ export default function FormulaireDescente({
             }));
           }
         }
-        
-        if (initialData?.polygon_points) {
-          setPolygonPoints(initialData.polygon_points);
-        }
       } catch (error) {
         console.error('Error fetching fokontany data:', error);
       } finally {
@@ -219,6 +217,7 @@ export default function FormulaireDescente({
     };
   }, []);
 
+  // Fonction pour gérer les changements dans les champs
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     const numericValue = name === 'x_coord' || name === 'y_coord' || name === 'superficie' ? 
@@ -230,8 +229,104 @@ export default function FormulaireDescente({
     }));
 
     // Si x_coord ou y_coord changent, mettre à jour la carte
-    if ((name === 'x_coord' || name === 'y_coord') && formData.x_coord && formData.y_coord) {
-      updateMapFromCoordinates();
+    if (name === 'x_coord' || name === 'y_coord') {
+      // Attendre un court instant pour que les deux valeurs soient mises à jour
+      setTimeout(() => {
+        if (formData.x_coord && formData.y_coord) {
+          updateMapFromCoordinates(formData.x_coord, formData.y_coord);
+        }
+      }, 100);
+    }
+  };
+
+  // Fonction pour mettre à jour la carte à partir des coordonnées x_coord, y_coord
+  const updateMapFromCoordinates = (x?: number, y?: number) => {
+    if (!mapRef.current) return;
+
+    const xCoord = x || formData.x_coord;
+    const yCoord = y || formData.y_coord;
+    
+    if (!xCoord || !yCoord) return;
+
+    try {
+      const coords = convertLambertToWGS84(xCoord, yCoord);
+      
+      // Centrer la carte sur la nouvelle position
+      mapRef.current.setView([coords.lat, coords.lng], 15);
+      
+      // Supprimer l'ancien marqueur s'il existe
+      if (coordinateMarkerRef.current && mapRef.current.hasLayer(coordinateMarkerRef.current)) {
+        coordinateMarkerRef.current.remove();
+        coordinateMarkerRef.current = null;
+      }
+      
+      // Créer un marqueur personnalisé pour les coordonnées
+      const markerIcon = L.divIcon({
+        html: `
+          <div style="
+            width: 24px;
+            height: 24px;
+            background: #ef4444;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+          ">
+            <div style="
+              width: 8px;
+              height: 8px;
+              background: white;
+              border-radius: 50%;
+            "></div>
+            <div style="
+              position: absolute;
+              top: -10px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: #ef4444;
+              color: white;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 10px;
+              font-weight: bold;
+              white-space: nowrap;
+            ">
+              Coord.
+            </div>
+          </div>
+        `,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 24]
+      });
+      
+      // Ajouter un nouveau marqueur
+      const marker = L.marker([coords.lat, coords.lng], { 
+        icon: markerIcon 
+      }).bindTooltip(`Coordonnées: X=${xCoord}, Y=${yCoord}<br>Lat=${coords.lat.toFixed(6)}, Lng=${coords.lng.toFixed(6)}`, {
+        permanent: false,
+        direction: 'top'
+      });
+      
+      marker.addTo(mapRef.current);
+      coordinateMarkerRef.current = marker;
+      
+      // Mettre à jour le formulaire avec la géométrie du point
+      setFormData(prev => ({
+        ...prev,
+        geom: {
+          type: 'Point',
+          coordinates: [coords.lng, coords.lat]
+        }
+      }));
+      
+      console.log('Carte centrée sur:', coords.lat, coords.lng);
+      
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour de la carte:', error);
     }
   };
 
@@ -262,46 +357,6 @@ export default function FormulaireDescente({
           geometry_type: 'polygon'
         }));
       }
-    }
-  };
-
-  // Mettre à jour la carte à partir des coordonnées x_coord, y_coord
-  const updateMapFromCoordinates = () => {
-    if (!mapRef.current || !formData.x_coord || !formData.y_coord) return;
-
-    try {
-      const coords = convertLambertToWGS84(formData.x_coord, formData.y_coord);
-      
-      // Effacer les éléments dessinés, mais pas la localisation
-      drawnItemsRef.current.clearLayers();
-      
-      // Centrer la carte sur la nouvelle position
-      mapRef.current.setView([coords.lat, coords.lng], 15);
-      
-      // Ajouter un point de référence (léger)
-      const referencePoint = L.circle([coords.lat, coords.lng], {
-        radius: 8,
-        color: '#10b981',
-        fillColor: '#10b981',
-        fillOpacity: 0.3,
-        weight: 1,
-        dashArray: '3, 3'
-      }).bindTooltip('Point de référence des coordonnées');
-      
-      drawnItemsRef.current.addLayer(referencePoint);
-      
-      // Mettre à jour le formulaire
-      setFormData(prev => ({
-        ...prev,
-        geom: {
-          type: 'Point',
-          coordinates: [coords.lng, coords.lat]
-        },
-        geometry_type: 'polygon'
-      }));
-      
-    } catch (error) {
-      console.error('Erreur lors de la mise à jour de la carte:', error);
     }
   };
 
@@ -619,8 +674,11 @@ export default function FormulaireDescente({
     if (initialData?.x_coord && initialData?.y_coord) {
       const coords = convertLambertToWGS84(initialData.x_coord, initialData.y_coord);
       mapRef.current.setView([coords.lat, coords.lng], 15);
+      
+      // Ajouter un marqueur pour les coordonnées initiales
+      updateMapFromCoordinates(initialData.x_coord, initialData.y_coord);
     } 
-    // Si données initiales avec geom ou polygon_points, les afficher
+    // Si données initiales avec polygon_points, les afficher
     else if (initialData?.polygon_points && initialData.polygon_points.length > 0) {
       // Afficher le polygone à partir des points
       displayPolygonOnMap(initialData.polygon_points);
@@ -726,11 +784,15 @@ export default function FormulaireDescente({
     };
   }, [initialData]);
 
-  // Mettre à jour la carte quand x_coord ou y_coord changent
+  // Mettre à jour la carte quand x_coord ou y_coord changent via useEffect séparé
   useEffect(() => {
-    if (formData.x_coord && formData.y_coord && mapRef.current) {
-      updateMapFromCoordinates();
-    }
+    const timer = setTimeout(() => {
+      if (formData.x_coord && formData.y_coord && mapRef.current) {
+        updateMapFromCoordinates();
+      }
+    }, 500); // Délai de 500ms pour éviter des mises à jour trop fréquentes
+
+    return () => clearTimeout(timer);
   }, [formData.x_coord, formData.y_coord]);
 
   return (
@@ -1144,7 +1206,7 @@ export default function FormulaireDescente({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Coordonnée X (Lambert)
+                Coordonnée X (Lambert) *
               </label>
               <input
                 type="number"
@@ -1154,13 +1216,15 @@ export default function FormulaireDescente({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Ex: 521688"
+                required
               />
               <p className="text-xs text-slate-500 mt-1">Coordonnée Lambert Madagascar (mètres)</p>
+              <p className="text-xs text-blue-600 mt-1">La carte se mettra à jour automatiquement</p>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Coordonnée Y (Lambert)
+                Coordonnée Y (Lambert) *
               </label>
               <input
                 type="number"
@@ -1170,8 +1234,10 @@ export default function FormulaireDescente({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Ex: 798900"
+                required
               />
               <p className="text-xs text-slate-500 mt-1">Coordonnée Lambert Madagascar (mètres)</p>
+              <p className="text-xs text-blue-600 mt-1">La carte se mettra à jour automatiquement</p>
             </div>
           </div>
 
@@ -1221,7 +1287,7 @@ export default function FormulaireDescente({
               </button>
               <button
                 type="button"
-                onClick={updateMapFromCoordinates}
+                onClick={() => updateMapFromCoordinates()}
                 className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex items-center gap-2 shadow-sm"
               >
                 📍 Centrer sur coordonnées
@@ -1232,8 +1298,9 @@ export default function FormulaireDescente({
               <div className="flex items-start gap-2">
                 <div className="text-blue-500 mt-0.5">💡</div>
                 <div>
-                  <p className="text-sm text-blue-700 font-medium mb-1">Comment tracer un polygone :</p>
+                  <p className="text-sm text-blue-700 font-medium mb-1">Comment utiliser la carte :</p>
                   <ol className="text-xs text-blue-600 list-decimal pl-5 space-y-1">
+                    <li>Entrez les coordonnées X et Y (Lambert) ci-dessus pour centrer automatiquement la carte</li>
                     <li>Cliquez sur l'outil <span className="font-semibold">polygone</span> (icône en forme de triangle) dans la barre d'outils</li>
                     <li>Cliquez sur la carte pour placer chaque sommet de votre polygone</li>
                     <li>Vous pouvez ajouter autant de points que nécessaire</li>
@@ -1293,6 +1360,17 @@ export default function FormulaireDescente({
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                     <span className="text-sm text-blue-600">
                       📍 Position détectée : {userLocation.lat.toFixed(6)}, {userLocation.lng.toFixed(6)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {formData.x_coord && formData.y_coord && (
+                <div className="p-2 bg-red-50 border border-red-100 rounded-lg inline-block">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <span className="text-sm text-red-600">
+                      📍 Coordonnées saisies : X={formData.x_coord}, Y={formData.y_coord}
                     </span>
                   </div>
                 </div>

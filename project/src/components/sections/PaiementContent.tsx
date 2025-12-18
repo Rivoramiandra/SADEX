@@ -514,9 +514,6 @@ export default function PaiementContent() {
                   Référence FT
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                  Bénéficiaire
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Montant
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -558,20 +555,7 @@ export default function PaiementContent() {
                         DS-{avis.iddescente}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-slate-900">
-                        {avis.ft?.nom_convoquee || avis.ft?.nom_personne_r || 'Non spécifié'}
-                      </div>
-                      <div className="text-xs text-slate-500 capitalize">
-                        {avis.ft?.type_convoquee || 'Non spécifié'}
-                      </div>
-                      {avis.ft?.commune && (
-                        <div className="text-xs text-slate-500 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {avis.ft.commune} {avis.ft.fokontany && `- ${avis.ft.fokontany}`}
-                        </div>
-                      )}
-                    </td>
+                   
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-lg font-bold text-slate-900">
                         {formatMontant(avis.montant)} Ar

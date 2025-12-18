@@ -5,7 +5,7 @@ import {
   CheckCircle, XCircle, AlertCircle, Clock, FileText, User,
   ChevronLeft, ChevronRight, MoreVertical, Printer, X,
   Building, Receipt, CreditCard as CardIcon, Smartphone,
-  TrendingDown, Percent, Layers
+  TrendingDown, Percent, Layers, Hash, PieChart
 } from 'lucide-react';
 import Completerpaiement from './Completerpaiement';
 
@@ -32,6 +32,8 @@ function Gererpaiement() {
     montant_aujourdhui: 0,
     paiements_complets: 0,
     paiements_partiels: 0,
+    paiements_en_tranches: 0,
+    montant_en_attente: 0,
     espece: 0,
     virement: 0,
     mobile_money: 0,
@@ -62,20 +64,33 @@ function Gererpaiement() {
       
       if (result.success) {
         const paiementsData = result.data || [];
-        console.log('✅ Paiements récupérés:', paiementsData.length);
+        console.log('✅ Paiements récupérés:', paiementsData);
         
-        // Séparer les paiements complets et partiels
-        const complets = paiementsData.filter(p => 
-          p.statut?.toLowerCase() === 'complet' || 
-          p.statut?.toLowerCase() === 'payé' ||
-          p.statut?.toLowerCase() === 'terminé'
-        );
+        // Analyse des paiements par statut et type
+        const complets = paiementsData.filter(p => {
+          const statut = p.statut?.toLowerCase();
+          return statut === 'complet' || 
+                 statut === 'payé' ||
+                 statut === 'terminé' ||
+                 (p.montant_reste === 0 || p.montant_reste === null) ||
+                 (p.numero_tranche && p.nombre_tranche && p.numero_tranche === p.nombre_tranche);
+        });
         
-        const partiels = paiementsData.filter(p => 
-          p.statut?.toLowerCase() === 'partiel' || 
-          p.statut?.toLowerCase() === 'partiellement payé' ||
-          p.statut?.toLowerCase() === 'en cours'
-        );
+        const partiels = paiementsData.filter(p => {
+          const statut = p.statut?.toLowerCase();
+          const hasTranches = p.nombre_tranche && p.nombre_tranche > 1;
+          const hasMontantRestant = p.montant_reste && p.montant_reste > 0;
+          
+          return statut === 'partiel' || 
+                 statut === 'partiellement payé' ||
+                 statut === 'en cours' ||
+                 hasTranches ||
+                 hasMontantRestant;
+        });
+
+        console.log('📊 Paiements complets:', complets.length);
+        console.log('📊 Paiements partiels:', partiels.length);
+        console.log('📊 Exemple de paiement partiel:', partiels[0]);
 
         setPaiements(paiementsData);
         setPaiementsComplets(complets);
@@ -109,32 +124,86 @@ function Gererpaiement() {
       
       if (result.success) {
         console.log('📊 Statistiques récupérées:', result.data);
-        setStats(result.data);
+        
+        // Calculer des statistiques supplémentaires
+        const allPaiements = paiements.length > 0 ? paiements : 
+          result.data.paiements ? result.data.paiements : [];
+        
+        const paiementsPartiels = allPaiements.filter(p => 
+          p.montant_reste > 0 || 
+          (p.nombre_tranche && p.nombre_tranche > 1 && 
+           p.numero_tranche && p.numero_tranche < p.nombre_tranche)
+        );
+        
+        const montantEnAttente = paiementsPartiels.reduce((sum, p) => 
+          sum + (parseFloat(p.montant_reste) || 0), 0);
+        
+        setStats({
+          ...result.data,
+          paiements_partiels: paiementsPartiels.length,
+          paiements_en_tranches: allPaiements.filter(p => p.nombre_tranche && p.nombre_tranche > 1).length,
+          montant_en_attente: montantEnAttente
+        });
       } else {
         console.warn('⚠️ Réponse API sans succès pour stats:', result);
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement des statistiques:', error);
     }
-  }, []);
+  }, [paiements]);
 
   // Initial fetch
   useEffect(() => {
     fetchPaiements();
-    fetchStats();
-  }, [fetchPaiements, fetchStats]);
+  }, [fetchPaiements]);
+
+  useEffect(() => {
+    if (paiements.length > 0) {
+      fetchStats();
+    }
+  }, [paiements, fetchStats]);
+
+  // Calculer le pourcentage payé pour un paiement partiel
+  const calculatePourcentagePaye = (paiement) => {
+    if (!paiement) return 0;
+    
+    const montantTotal = parseFloat(paiement.montant_total) || 
+                        (parseFloat(paiement.montant) + parseFloat(paiement.montant_reste || 0));
+    const montantPaye = parseFloat(paiement.montant) || 0;
+    
+    if (montantTotal > 0) {
+      return Math.round((montantPaye / montantTotal) * 100);
+    }
+    
+    return 0;
+  };
+
+  // Calculer les informations de tranches
+  const getTranchesInfo = (paiement) => {
+    const nombreTranche = paiement.nombre_tranche || 1;
+    const numeroTranche = paiement.numero_tranche || 1;
+    
+    return {
+      nombreTranche,
+      numeroTranche,
+      estPremiereTranche: numeroTranche === 1,
+      estDerniereTranche: numeroTranche === nombreTranche,
+      progres: nombreTranche > 1 ? Math.round((numeroTranche / nombreTranche) * 100) : 100
+    };
+  };
 
   // Filtrer les paiements complets
   const filteredPaiementsComplets = paiementsComplets.filter(paiement => {
     const searchLower = searchTerm.toLowerCase();
     
     return searchTerm === '' ||
-      paiement.reference?.toLowerCase().includes(searchLower) ||
-      paiement.contact?.toLowerCase().includes(searchLower) ||
-      paiement.mode_paiement?.toLowerCase().includes(searchLower) ||
-      paiement.num_ap?.toLowerCase().includes(searchLower) ||
-      paiement.reference_ft?.toLowerCase().includes(searchLower) ||
-      paiement.nom_convoquee?.toLowerCase().includes(searchLower);
+      (paiement.reference && paiement.reference.toLowerCase().includes(searchLower)) ||
+      (paiement.contact && paiement.contact.toLowerCase().includes(searchLower)) ||
+      (paiement.mode_paiement && paiement.mode_paiement.toLowerCase().includes(searchLower)) ||
+      (paiement.num_ap && paiement.num_ap.toLowerCase().includes(searchLower)) ||
+      (paiement.reference_ft && paiement.reference_ft.toLowerCase().includes(searchLower)) ||
+      (paiement.nom_convoquee && paiement.nom_convoquee.toLowerCase().includes(searchLower)) ||
+      `#${paiement.idpaiement}`.includes(searchLower);
   });
 
   // Filtrer les paiements partiels
@@ -142,12 +211,13 @@ function Gererpaiement() {
     const searchLower = searchTermPartiel.toLowerCase();
     
     return searchTermPartiel === '' ||
-      paiement.reference?.toLowerCase().includes(searchLower) ||
-      paiement.contact?.toLowerCase().includes(searchLower) ||
-      paiement.mode_paiement?.toLowerCase().includes(searchLower) ||
-      paiement.num_ap?.toLowerCase().includes(searchLower) ||
-      paiement.reference_ft?.toLowerCase().includes(searchLower) ||
-      paiement.nom_convoquee?.toLowerCase().includes(searchLower);
+      (paiement.reference && paiement.reference.toLowerCase().includes(searchLower)) ||
+      (paiement.contact && paiement.contact.toLowerCase().includes(searchLower)) ||
+      (paiement.mode_paiement && paiement.mode_paiement.toLowerCase().includes(searchLower)) ||
+      (paiement.num_ap && paiement.num_ap.toLowerCase().includes(searchLower)) ||
+      (paiement.reference_ft && paiement.reference_ft.toLowerCase().includes(searchLower)) ||
+      (paiement.nom_convoquee && paiement.nom_convoquee.toLowerCase().includes(searchLower)) ||
+      `#${paiement.idpaiement}`.includes(searchLower);
   });
 
   // Formater les dates
@@ -167,6 +237,7 @@ function Gererpaiement() {
 
   // Formater les montants
   const formatMontant = (montant) => {
+    if (montant === null || montant === undefined) return '0';
     return new Intl.NumberFormat('fr-FR').format(montant);
   };
 
@@ -249,7 +320,6 @@ function Gererpaiement() {
         setShowDeleteModal(false);
         setPaiementToDelete(null);
         fetchPaiements();
-        fetchStats();
       } else {
         throw new Error(result.message || 'Erreur lors de la suppression');
       }
@@ -269,6 +339,7 @@ function Gererpaiement() {
 
   // Ouvrir modal pour compléter paiement
   const handleCompleterPaiement = (paiement) => {
+    console.log('📋 Paiement à compléter:', paiement);
     setPaiementToComplete(paiement);
     setShowCompleterModal(true);
   };
@@ -278,7 +349,6 @@ function Gererpaiement() {
     setShowCompleterModal(false);
     setPaiementToComplete(null);
     fetchPaiements();
-    fetchStats();
   };
 
   // Calculer les indices affichés
@@ -295,14 +365,14 @@ function Gererpaiement() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Gestion des Paiements</h1>
-            <p className="text-slate-600">Historique et suivi des paiements effectués</p>
+            <p className="text-slate-600">Suivi des paiements complets et partiels avec gestion des tranches</p>
           </div>
           
           <div className="flex items-center gap-2">
             <div className="text-right">
-              <p className="text-sm text-slate-600">Total aujourd'hui</p>
+              <p className="text-sm text-slate-600">Montant total encaissé</p>
               <p className="text-xl font-bold text-emerald-600">
-                {formatMontant(stats.montant_aujourdhui)} Ar
+                {formatMontant(stats.total_montant)} Ar
               </p>
             </div>
             <div className="p-3 bg-emerald-100 rounded-full">
@@ -312,7 +382,7 @@ function Gererpaiement() {
         </div>
       </div>
 
-      {/* Cartes de statistiques */}
+      {/* Cartes de statistiques améliorées */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total paiements */}
         <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6">
@@ -320,9 +390,7 @@ function Gererpaiement() {
             <div>
               <p className="text-sm text-slate-600">Total Paiements</p>
               <p className="text-2xl font-bold text-blue-600">{stats.total_paiements}</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {formatMontant(stats.total_montant)} Ar
-              </p>
+              <p className="text-xs text-slate-500">Encaissés: {formatMontant(stats.total_montant)} Ar</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <Layers className="w-6 h-6 text-blue-600" />
@@ -330,13 +398,13 @@ function Gererpaiement() {
           </div>
         </div>
 
-        {/* Aujourd'hui */}
+        {/* Paiements aujourd'hui */}
         <div className="bg-white rounded-xl shadow-sm border border-green-200 p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-600">Aujourd'hui</p>
               <p className="text-2xl font-bold text-green-600">{stats.paiements_aujourdhui}</p>
-              <p className="text-lg font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-slate-900">
                 {formatMontant(stats.montant_aujourdhui)} Ar
               </p>
             </div>
@@ -346,30 +414,32 @@ function Gererpaiement() {
           </div>
         </div>
 
-        {/* Paiements complets */}
-        <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-6">
+        {/* Paiements partiels en attente */}
+        <div className="bg-white rounded-xl shadow-sm border border-orange-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Complets</p>
-              <p className="text-2xl font-bold text-emerald-600">{stats.paiements_complets}</p>
-              <p className="text-sm text-slate-500">Paiements terminés</p>
+              <p className="text-sm text-slate-600">En attente</p>
+              <p className="text-2xl font-bold text-orange-600">{stats.paiements_partiels}</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {formatMontant(stats.montant_en_attente)} Ar
+              </p>
             </div>
-            <div className="p-3 bg-emerald-100 rounded-full">
-              <CheckCircle className="w-6 h-6 text-emerald-600" />
+            <div className="p-3 bg-orange-100 rounded-full">
+              <Clock className="w-6 h-6 text-orange-600" />
             </div>
           </div>
         </div>
 
-        {/* Paiements partiels */}
-        <div className="bg-white rounded-xl shadow-sm border border-orange-200 p-6">
+        {/* Paiements en tranches */}
+        <div className="bg-white rounded-xl shadow-sm border border-purple-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Partiels</p>
-              <p className="text-2xl font-bold text-orange-600">{stats.paiements_partiels}</p>
-              <p className="text-sm text-slate-500">En cours de paiement</p>
+              <p className="text-sm text-slate-600">En tranches</p>
+              <p className="text-2xl font-bold text-purple-600">{stats.paiements_en_tranches}</p>
+              <p className="text-xs text-slate-500">Paiements échelonnés</p>
             </div>
-            <div className="p-3 bg-orange-100 rounded-full">
-              <Percent className="w-6 h-6 text-orange-600" />
+            <div className="p-3 bg-purple-100 rounded-full">
+              <PieChart className="w-6 h-6 text-purple-600" />
             </div>
           </div>
         </div>
@@ -395,7 +465,6 @@ function Gererpaiement() {
               className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
               onClick={() => {
                 fetchPaiements();
-                fetchStats();
               }}
             >
               <RefreshCw className="w-4 h-4" />
@@ -404,11 +473,14 @@ function Gererpaiement() {
           </div>
         </div>
 
-        {/* Tableau des paiements partiels */}
+        {/* Tableau des paiements partiels - AMELIORE */}
         <div className="mb-12">
           <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
             <Clock className="w-5 h-5 text-blue-600" />
             Paiements Partiels ({filteredPaiementsPartiels.length})
+            <span className="text-sm font-normal text-slate-500 ml-2">
+              - Montant total en attente: {formatMontant(stats.montant_en_attente)} Ar
+            </span>
           </h2>
           
           {/* Barre de recherche pour partiels */}
@@ -417,7 +489,7 @@ function Gererpaiement() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Rechercher dans les paiements partiels..."
+                placeholder="Rechercher par ID, référence, contact..."
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 value={searchTermPartiel}
                 onChange={(e) => setSearchTermPartiel(e.target.value)}
@@ -429,7 +501,7 @@ function Gererpaiement() {
             <div className="flex items-center justify-center h-32">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                <p className="text-slate-600">Chargement...</p>
+                <p className="text-slate-600">Chargement des paiements...</p>
               </div>
             </div>
           ) : error ? (
@@ -467,10 +539,10 @@ function Gererpaiement() {
                         Montant
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                        Reste à payer
+                        Tranches
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                        Mode
+                        Progression
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Actions
@@ -478,94 +550,135 @@ function Gererpaiement() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
-                    {filteredPaiementsPartiels.slice(startIndexPartiel, endIndexPartiel).map((paiement) => (
-                      <tr key={paiement.idpaiement} className="hover:bg-blue-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="text-sm font-mono text-slate-900">#{paiement.idpaiement}</div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            <span className="text-sm text-slate-900">{formatDate(paiement.date_paiement)}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Receipt className="w-3 h-3 text-blue-500" />
-                              <div className="text-sm font-medium text-slate-900">
-                                {paiement.num_ap || `AP-${paiement.idavis}`}
-                              </div>
+                    {filteredPaiementsPartiels.slice(startIndexPartiel, endIndexPartiel).map((paiement) => {
+                      const pourcentagePaye = calculatePourcentagePaye(paiement);
+                      const tranchesInfo = getTranchesInfo(paiement);
+                      const montantRestant = parseFloat(paiement.montant_reste) || 0;
+                      
+                      return (
+                        <tr key={paiement.idpaiement} className="hover:bg-blue-50 transition-colors">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex flex-col">
+                              <div className="text-sm font-mono font-bold text-slate-900">#{paiement.idpaiement}</div>
                             </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <Building className="w-3 h-3 text-emerald-500" />
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span className="text-sm text-slate-900">{formatDate(paiement.date_paiement)}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Receipt className="w-3 h-3 text-blue-500" />
+                                <div className="text-sm font-medium text-slate-900">
+                                  {paiement.num_ap || `AP-${paiement.idavis || 'N/A'}`}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Building className="w-3 h-3 text-emerald-500" />
+                                <div className="text-xs text-slate-500">
+                                  {paiement.reference_ft || `FT-${paiement.idft || 'N/A'}`}
+                                </div>
+                              </div>
                               <div className="text-xs text-slate-500">
-                                {paiement.reference_ft || `FT-${paiement.idft}`}
+                                Contact: {paiement.contact || 'N/A'}
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="text-base font-bold text-slate-900">
-                            {formatMontant(paiement.montant)} Ar
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="text-base font-bold text-red-600">
-                            {formatMontant(paiement.montant_reste || 0)} Ar
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {getModeIcon(paiement.mode_paiement)}
-                            <span className="text-sm text-slate-900">{paiement.mode_paiement || 'N/A'}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleCompleterPaiement(paiement)}
-                              className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1"
-                              title="Compléter le paiement"
-                            >
-                              <DollarSign className="w-3 h-3" />
-                              Compléter
-                            </button>
-                            
-                            <button
-                              onClick={() => {
-                                setSelectedPaiement(paiement);
-                                setShowDetailsModal(true);
-                              }}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Voir détails"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            
-                            <button
-                              onClick={() => {
-                                setPaiementToDelete(paiement.idpaiement);
-                                setShowDeleteModal(true);
-                              }}
-                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="space-y-1">
+                              <div className="text-base font-bold text-slate-900">
+                                {formatMontant(paiement.montant)} Ar
+                              </div>
+                              <div className="text-sm text-red-600">
+                                Reste: {formatMontant(montantRestant)} Ar
+                              </div>
+                              {paiement.montant_total && (
+                                <div className="text-xs text-slate-500">
+                                  Total: {formatMontant(paiement.montant_total)} Ar
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {tranchesInfo.nombreTranche > 1 ? (
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                  <Hash className="w-3 h-3 text-slate-500" />
+                                  <span className="text-sm text-slate-900">
+                                    {tranchesInfo.numeroTranche}/{tranchesInfo.nombreTranche}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Tranche {tranchesInfo.numeroTranche} sur {tranchesInfo.nombreTranche}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-slate-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-600">Payé: {pourcentagePaye}%</span>
+                                <span className="text-slate-600">{formatMontant(paiement.montant)}/{formatMontant(paiement.montant_total || (paiement.montant + montantRestant))} Ar</span>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-2">
+                                <div 
+                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${pourcentagePaye}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleCompleterPaiement(paiement)}
+                                className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                title="Compléter ou ajouter une tranche"
+                              >
+                                <DollarSign className="w-3 h-3" />
+                                {montantRestant > 0 ? 'Compléter' : 'Nouvelle tranche'}
+                              </button>
+                              
+                              <button
+                                onClick={() => {
+                                  setSelectedPaiement(paiement);
+                                  setShowDetailsModal(true);
+                                }}
+                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                title="Voir détails"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              
+                              <button
+                                onClick={() => {
+                                  setPaiementToDelete(paiement.idpaiement);
+                                  setShowDeleteModal(true);
+                                }}
+                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
               {/* Pagination pour partiels */}
               {filteredPaiementsPartiels.length > pageSize && (
-                <div className="flex items-center justify-between mt-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-4">
                   <div className="text-sm text-slate-600">
-                    Page {pagePartiel} sur {totalPagesPartiel}
+                    Affichage de {startIndexPartiel + 1} à {endIndexPartiel} sur {filteredPaiementsPartiels.length} paiements partiels
                   </div>
                   <div className="flex items-center space-x-1">
                     <button
@@ -628,7 +741,7 @@ function Gererpaiement() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Rechercher dans les paiements complets..."
+                placeholder="Rechercher par ID, référence, contact..."
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -667,7 +780,7 @@ function Gererpaiement() {
                         Mode
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                        Référence
+                        Statut
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Actions
@@ -675,85 +788,97 @@ function Gererpaiement() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
-                    {filteredPaiementsComplets.slice(startIndex, endIndex).map((paiement) => (
-                      <tr key={paiement.idpaiement} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="text-sm font-mono text-slate-900">#{paiement.idpaiement}</div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            <span className="text-sm text-slate-900">{formatDate(paiement.date_paiement)}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="space-y-1">
+                    {filteredPaiementsComplets.slice(startIndex, endIndex).map((paiement) => {
+                      const tranchesInfo = getTranchesInfo(paiement);
+                      
+                      return (
+                        <tr key={paiement.idpaiement} className="hover:bg-green-50 transition-colors">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="text-sm font-mono text-slate-900">#{paiement.idpaiement}</div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <Receipt className="w-3 h-3 text-blue-500" />
-                              <div className="text-sm font-medium text-slate-900">
-                                {paiement.num_ap || `AP-${paiement.idavis}`}
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span className="text-sm text-slate-900">{formatDate(paiement.date_paiement)}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Receipt className="w-3 h-3 text-blue-500" />
+                                <div className="text-sm font-medium text-slate-900">
+                                  {paiement.num_ap || `AP-${paiement.idavis || 'N/A'}`}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Building className="w-3 h-3 text-emerald-500" />
+                                <div className="text-xs text-slate-500">
+                                  {paiement.reference_ft || `FT-${paiement.idft || 'N/A'}`}
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Building className="w-3 h-3 text-emerald-500" />
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="text-base font-bold text-slate-900">
+                              {formatMontant(paiement.montant)} Ar
+                            </div>
+                            {tranchesInfo.nombreTranche > 1 && (
                               <div className="text-xs text-slate-500">
-                                {paiement.reference_ft || `FT-${paiement.idft}`}
+                                {tranchesInfo.nombreTranche} tranches
                               </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {getModeIcon(paiement.mode_paiement)}
+                              <span className="text-sm text-slate-900">{paiement.mode_paiement || 'N/A'}</span>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="text-base font-bold text-slate-900">
-                            {formatMontant(paiement.montant)} Ar
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {getModeIcon(paiement.mode_paiement)}
-                            <span className="text-sm text-slate-900">{paiement.mode_paiement || 'N/A'}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="text-sm font-mono text-slate-900">
-                            {paiement.reference || 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => {
-                                setSelectedPaiement(paiement);
-                                setShowDetailsModal(true);
-                              }}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Voir détails"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            
-                            <button
-                              onClick={() => {
-                                setPaiementToDelete(paiement.idpaiement);
-                                setShowDeleteModal(true);
-                              }}
-                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              {getStatutIcon(paiement.statut)}
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatutColor(paiement.statut)}`}>
+                                {paiement.statut || 'Complet'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedPaiement(paiement);
+                                  setShowDetailsModal(true);
+                                }}
+                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                title="Voir détails"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              
+                              <button
+                                onClick={() => {
+                                  setPaiementToDelete(paiement.idpaiement);
+                                  setShowDeleteModal(true);
+                                }}
+                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
               {/* Pagination pour complets */}
               {filteredPaiementsComplets.length > pageSize && (
-                <div className="flex items-center justify-between mt-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-4">
                   <div className="text-sm text-slate-600">
-                    Page {page} sur {totalPages}
+                    Affichage de {startIndex + 1} à {endIndex} sur {filteredPaiementsComplets.length} paiements complets
                   </div>
                   <div className="flex items-center space-x-1">
                     <button
@@ -816,6 +941,8 @@ function Gererpaiement() {
                 </h2>
                 <p className="text-slate-600 mt-1">
                   ID: #{paiementToComplete.idpaiement} • Reste à payer: {formatMontant(paiementToComplete.montant_reste || 0)} Ar
+                  {paiementToComplete.nombre_tranche && paiementToComplete.nombre_tranche > 1 && 
+                    ` • Tranche ${paiementToComplete.numero_tranche || 1}/${paiementToComplete.nombre_tranche}`}
                 </p>
               </div>
               <button
@@ -837,7 +964,7 @@ function Gererpaiement() {
         </div>
       )}
 
-      {/* Modal de détails du paiement */}
+      {/* Modal de détails du paiement - AMELIORE */}
       {showDetailsModal && selectedPaiement && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -881,32 +1008,32 @@ function Gererpaiement() {
                       </dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-slate-600">Mode paiement:</dt>
-                      <dd className="font-medium text-slate-900">{selectedPaiement.mode_paiement || 'N/A'}</dd>
+                      <dt className="text-slate-600">Montant restant:</dt>
+                      <dd className="font-bold text-slate-900">
+                        {formatMontant(selectedPaiement.montant_reste || 0)} Ar
+                      </dd>
                     </div>
                   </dl>
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Statut et Références</h3>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Statut et Mode de Paiement</h3>
                   <dl className="space-y-3">
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Statut:</dt>
                       <dd>
                         <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatutColor(selectedPaiement.statut)}`}>
-                          {selectedPaiement.statut}
+                          {selectedPaiement.statut || 'Non spécifié'}
                         </span>
                       </dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-slate-600">Référence:</dt>
-                      <dd className="font-medium text-slate-900">{selectedPaiement.reference || 'N/A'}</dd>
+                      <dt className="text-slate-600">Mode paiement:</dt>
+                      <dd className="font-medium text-slate-900">{selectedPaiement.mode_paiement || 'N/A'}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-slate-600">Montant restant:</dt>
-                      <dd className="font-bold text-slate-900">
-                        {formatMontant(selectedPaiement.montant_reste || 0)} Ar
-                      </dd>
+                      <dt className="text-slate-600">Référence:</dt>
+                      <dd className="font-medium text-slate-900">{selectedPaiement.reference || 'N/A'}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Contact:</dt>
@@ -916,20 +1043,47 @@ function Gererpaiement() {
                 </div>
               </div>
 
+              {/* Informations des tranches */}
+              {(selectedPaiement.nombre_tranche && selectedPaiement.nombre_tranche > 1) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <PieChart className="w-5 h-5 text-blue-600" />
+                    Informations des Tranches
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-white rounded-lg border border-blue-100">
+                      <div className="text-2xl font-bold text-blue-600">{selectedPaiement.numero_tranche || 1}</div>
+                      <div className="text-sm text-slate-600">Tranche actuelle</div>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg border border-blue-100">
+                      <div className="text-2xl font-bold text-blue-600">{selectedPaiement.nombre_tranche}</div>
+                      <div className="text-sm text-slate-600">Nombre total de tranches</div>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg border border-blue-100">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {selectedPaiement.nombre_tranche ? 
+                          Math.round(((selectedPaiement.numero_tranche || 1) / selectedPaiement.nombre_tranche) * 100) : 100}%
+                      </div>
+                      <div className="text-sm text-slate-600">Progression</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Métadonnées */}
               <div className="bg-slate-50 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Informations supplémentaires</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-slate-600">N° Avis</p>
+                    <p className="text-sm text-slate-600">N° Avis de Paiement</p>
                     <p className="font-medium text-slate-900">
-                      {selectedPaiement.num_ap || `AP-${selectedPaiement.idavis}`}
+                      {selectedPaiement.num_ap || `AP-${selectedPaiement.idavis || 'N/A'}`}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600">FT</p>
+                    <p className="text-sm text-slate-600">Fiche Terrain (FT)</p>
                     <p className="font-medium text-slate-900">
-                      {selectedPaiement.reference_ft || `FT-${selectedPaiement.idft}`}
+                      {selectedPaiement.reference_ft || `FT-${selectedPaiement.idft || 'N/A'}`}
                     </p>
                   </div>
                   <div>
@@ -940,7 +1094,34 @@ function Gererpaiement() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-600">ID Descente</p>
-                    <p className="font-medium text-slate-900">DS-{selectedPaiement.iddescente}</p>
+                    <p className="font-medium text-slate-900">DS-{selectedPaiement.iddescente || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barre de progression */}
+              <div className="bg-white border border-slate-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Progression du Paiement</h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Montant payé: {formatMontant(selectedPaiement.montant)} Ar</span>
+                    <span className="text-slate-600">
+                      Total: {formatMontant(
+                        selectedPaiement.montant_total || 
+                        (parseFloat(selectedPaiement.montant) + parseFloat(selectedPaiement.montant_reste || 0))
+                      )} Ar
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-4">
+                    <div 
+                      className="bg-blue-600 h-4 rounded-full transition-all duration-300"
+                      style={{ 
+                        width: `${calculatePourcentagePaye(selectedPaiement)}%` 
+                      }}
+                    ></div>
+                  </div>
+                  <div className="text-center text-sm font-medium text-slate-700">
+                    {calculatePourcentagePaye(selectedPaiement)}% payé
                   </div>
                 </div>
               </div>
@@ -953,6 +1134,18 @@ function Gererpaiement() {
               >
                 Fermer
               </button>
+              {selectedPaiement.montant_reste > 0 && (
+                <button
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    handleCompleterPaiement(selectedPaiement);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <DollarSign className="w-4 h-4" />
+                  Compléter le paiement
+                </button>
+              )}
             </div>
           </div>
         </div>

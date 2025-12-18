@@ -2,17 +2,23 @@ import React, { useState, useEffect } from 'react';
 import {
   DollarSign, CreditCard, Banknote, Phone, TrendingUp,
   CheckCircle, X, Loader, AlertCircle, Calendar,
-  User, Receipt, Building
+  User, Receipt, Building, Hash, PieChart, Layers,
+  Plus, Minus
 } from 'lucide-react';
 
 function Completerpaiement({ paiement, onClose }) {
   const [formData, setFormData] = useState({
+    // Informations de base
     mode_paiement: paiement.mode_paiement || 'Espèce',
-    montant_paye: paiement.montant_reste || 0,
-    montant_total: paiement.montant,
+    montant_paye: 0,
+    montant_total: paiement.montant_total || paiement.montant,
+    date_paiement: new Date().toISOString().split('T')[0],
     reference: '',
     contact: paiement.contact || '',
-    date_paiement: new Date().toISOString().split('T')[0],
+    // Gestion des tranches
+    est_nouvelle_tranche: false,
+    nombre_tranche_total: paiement.nombre_tranche || 1,
+    numero_tranche_actuelle: paiement.numero_tranche || 1,
     // Champs spécifiques aux modes
     numero_carte: '',
     nom_carte: '',
@@ -33,16 +39,57 @@ function Completerpaiement({ paiement, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [paiementInfo, setPaiementInfo] = useState(null);
+  const [montantParTranche, setMontantParTranche] = useState(0);
 
-  // Mettre à jour le montant à payer quand le paiement change
+  // Mettre à jour les informations quand le paiement change
   useEffect(() => {
-    if (paiement && paiement.montant_reste > 0) {
+    if (paiement) {
+      console.log('📋 Paiement reçu:', paiement);
+      
+      const montantPayeActuel = parseFloat(paiement.montant) || 0;
+      const montantRestant = parseFloat(paiement.montant_reste) || 0;
+      const montantTotal = parseFloat(paiement.montant_total) || 
+                         (montantPayeActuel + montantRestant);
+      
+      const nombreTotalTranches = paiement.nombre_tranche || 1;
+      const numeroTrancheActuelle = paiement.numero_tranche || 1;
+      
+      // Calculer combien de tranches sont déjà payées
+      const tranchesDejaPayees = numeroTrancheActuelle;
+      const tranchesRestant = nombreTotalTranches - tranchesDejaPayees;
+      
+      // Calculer le montant par tranche pour les tranches restantes
+      let montantParTrancheCalcule = 0;
+      if (tranchesRestant > 0) {
+        montantParTrancheCalcule = Math.floor(montantRestant / tranchesRestant);
+        const reste = montantRestant - (montantParTrancheCalcule * tranchesRestant);
+        
+        // Pour une seule tranche restante, on prend tout le reste
+        if (tranchesRestant === 1) {
+          montantParTrancheCalcule = montantRestant;
+        }
+      }
+      
+      setMontantParTranche(montantParTrancheCalcule);
+      
+      // Calculer la prochaine tranche (si on est à la tranche 1, la prochaine est 2)
+      const prochaineTranche = numeroTrancheActuelle + 1;
+      
       setFormData(prev => ({
         ...prev,
-        montant_paye: paiement.montant_reste,
+        montant_paye: montantParTrancheCalcule || 0,
+        montant_total: montantTotal,
         mode_paiement: paiement.mode_paiement || 'Espèce',
-        contact: paiement.contact || ''
+        contact: paiement.contact || '',
+        nombre_tranche_total: nombreTotalTranches,
+        numero_tranche_actuelle: prochaineTranche,
+        est_nouvelle_tranche: montantRestant > 0
       }));
+      
+      // Calculer les informations de paiement
+      const info = calculerInformationsPaiement(paiement);
+      setPaiementInfo(info);
     }
   }, [paiement]);
 
@@ -61,7 +108,7 @@ function Completerpaiement({ paiement, onClose }) {
     const maxMontant = paiement.montant_reste || 0;
     
     if (value > maxMontant) {
-      setError(`Le montant ne peut pas dépasser ${maxMontant.toLocaleString()} Ar`);
+      setError(`Le montant ne peut pas dépasser ${formatMontant(maxMontant)} Ar`);
     } else {
       setError(null);
     }
@@ -72,18 +119,51 @@ function Completerpaiement({ paiement, onClose }) {
     }));
   };
 
+  // Calculer les informations du paiement
+  const calculerInformationsPaiement = (paiementData) => {
+    const montantPayeActuel = parseFloat(paiementData.montant) || 0;
+    const montantRestant = parseFloat(paiementData.montant_reste) || 0;
+    const montantTotal = parseFloat(paiementData.montant_total) || 
+                        (montantPayeActuel + montantRestant);
+    
+    const nombreTranche = paiementData.nombre_tranche || 1;
+    const numeroTranche = paiementData.numero_tranche || 1;
+    
+    const prochaineTranche = numeroTranche + 1;
+    const estDerniereTranche = prochaineTranche === nombreTranche;
+    const estTrancheFinale = (formData.montant_paye >= montantRestant) || estDerniereTranche;
+    
+    const pourcentagePayeActuel = montantTotal > 0 ? 
+      Math.round((montantPayeActuel / montantTotal) * 100) : 0;
+    
+    const nouveauPourcentagePaye = montantTotal > 0 ? 
+      Math.round(((montantPayeActuel + (formData.montant_paye || 0)) / montantTotal) * 100) : 0;
+    
+    const nouveauMontantRestant = montantRestant - (formData.montant_paye || 0);
+    
+    return {
+      montantPayeActuel,
+      montantRestant,
+      montantTotal,
+      nombreTranche,
+      numeroTranche,
+      prochaineTranche,
+      estDerniereTranche: estTrancheFinale,
+      pourcentagePayeActuel,
+      nouveauPourcentagePaye,
+      montantTotalPaye: montantPayeActuel + (formData.montant_paye || 0),
+      nouveauMontantRestant,
+      montantParTrancheSuggest: montantParTranche
+    };
+  };
+
   // Formater les montants
   const formatMontant = (montant) => {
+    if (montant === null || montant === undefined) return '0';
     return new Intl.NumberFormat('fr-FR').format(montant);
   };
 
-  // Calculer le nouveau montant restant
-  const calculerMontantRestant = () => {
-    const montantActuel = paiement.montant_reste || 0;
-    const montantPaye = parseFloat(formData.montant_paye) || 0;
-    return montantActuel - montantPaye;
-  };
-
+  // Valider le formulaire
   const validerFormulaire = () => {
     const montantPaye = parseFloat(formData.montant_paye);
     const montantRestant = paiement.montant_reste;
@@ -168,6 +248,7 @@ function Completerpaiement({ paiement, onClose }) {
     return true;
   };
 
+  // Soumettre le formulaire
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -179,15 +260,32 @@ function Completerpaiement({ paiement, onClose }) {
     setLoading(true);
 
     try {
-      // Préparer les données selon le mode de paiement
+      // Calculer les nouvelles valeurs
+      const montantPaye = parseFloat(formData.montant_paye);
+      const montantRestant = parseFloat(paiement.montant_reste) || 0;
+      const nouveauMontantRestant = montantRestant - montantPaye;
+      
+      const nombreTrancheTotal = paiement.nombre_tranche || 1;
+      const numeroTrancheActuelle = paiement.numero_tranche || 1;
+      
+      const nouveauNumeroTranche = numeroTrancheActuelle + 1;
+      const estDerniereTranche = nouveauNumeroTranche === nombreTrancheTotal || nouveauMontantRestant <= 0;
+      
+      const nouveauStatut = estDerniereTranche ? 'Complet' : 'Partiel';
+
+      // Préparer les données
       const paiementData = {
         idpaiement: paiement.idpaiement,
-        montant_paye: parseFloat(formData.montant_paye),
+        montant_paye: montantPaye,
         mode_paiement: formData.mode_paiement,
         date_paiement: formData.date_paiement,
-        reference: formData.reference,
+        reference: formData.reference || `PAY-${Date.now()}`,
         contact: formData.contact,
-        // Champs spécifiques
+        est_nouvelle_tranche: true,
+        numero_tranche: nouveauNumeroTranche,
+        montant_reste: nouveauMontantRestant,
+        statut: nouveauStatut,
+        montant_total: paiementInfo.montantTotal,
         ...(formData.mode_paiement === 'Carte bancaire' && {
           details_carte: {
             numero: formData.numero_carte,
@@ -220,7 +318,7 @@ function Completerpaiement({ paiement, onClose }) {
         })
       };
 
-      console.log('Données envoyées:', paiementData);
+      console.log('📤 Données envoyées pour compléter paiement:', paiementData);
 
       const response = await fetch(`${API_BASE_URL}/paiements/completer`, {
         method: 'POST',
@@ -245,7 +343,7 @@ function Completerpaiement({ paiement, onClose }) {
         throw new Error(result.message || 'Erreur lors du paiement');
       }
     } catch (err) {
-      console.error('Erreur:', err);
+      console.error('❌ Erreur:', err);
       setError(err.message || 'Une erreur est survenue lors du paiement');
     } finally {
       setLoading(false);
@@ -536,24 +634,61 @@ function Completerpaiement({ paiement, onClose }) {
   };
 
   if (success) {
+    const info = paiementInfo || calculerInformationsPaiement(paiement);
+    
     return (
       <div className="text-center py-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
           <CheckCircle className="w-8 h-8 text-green-600" />
         </div>
-        <h3 className="text-xl font-bold text-green-800 mb-2">Paiement complété avec succès !</h3>
+        <h3 className="text-xl font-bold text-green-800 mb-2">Paiement enregistré avec succès !</h3>
         <p className="text-slate-600 mb-6">
-          Le paiement de {formatMontant(formData.montant_paye)} Ar a été enregistré.
+          La tranche {formData.numero_tranche_actuelle}/{info.nombreTranche} de {formatMontant(formData.montant_paye)} Ar a été ajoutée.
         </p>
+        
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-          <p className="text-green-700">
-            Montant restant après ce paiement : {formatMontant(calculerMontantRestant())} Ar
-          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+            <div>
+              <p className="text-sm text-slate-600">Tranche payée</p>
+              <p className="font-bold text-green-700">
+                {formData.numero_tranche_actuelle}/{info.nombreTranche}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Nouveau statut</p>
+              <p className="font-bold text-green-700">
+                {info.nouveauMontantRestant > 0 ? 'Partiel' : 'Complet'}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Total payé</p>
+              <p className="font-bold text-green-700">
+                {formatMontant(info.montantTotalPaye)} Ar / {formatMontant(info.montantTotal)} Ar
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Reste à payer</p>
+              <p className={`font-bold ${info.nouveauMontantRestant > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                {formatMontant(info.nouveauMontantRestant)} Ar
+              </p>
+            </div>
+          </div>
         </div>
-        <p className="text-sm text-slate-500">Cette fenêtre se fermera automatiquement...</p>
+        
+        <div className="w-full bg-slate-200 rounded-full h-3 mb-2">
+          <div 
+            className="bg-green-600 h-3 rounded-full transition-all duration-300"
+            style={{ width: `${info.nouveauPourcentagePaye}%` }}
+          ></div>
+        </div>
+        <p className="text-sm text-slate-500">{info.nouveauPourcentagePaye}% du total payé</p>
+        
+        <p className="text-sm text-slate-500 mt-4">Cette fenêtre se fermera automatiquement...</p>
       </div>
     );
   }
+
+  const info = paiementInfo || calculerInformationsPaiement(paiement);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -563,25 +698,77 @@ function Completerpaiement({ paiement, onClose }) {
           <div>
             <h3 className="font-bold text-slate-900 flex items-center gap-2">
               <Receipt className="w-5 h-5 text-blue-600" />
-              Paiement #{paiement.idpaiement}
+              Ajouter une nouvelle tranche de paiement
             </h3>
-            <div className="text-sm text-slate-600 mt-1">
+            <div className="text-sm text-slate-600 mt-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <Building className="w-3 h-3" />
+                <span>Paiement #{paiement.idpaiement}</span>
+              </div>
               {paiement.num_ap && (
-                <span className="flex items-center gap-1">
-                  <Building className="w-3 h-3" />
-                  {paiement.num_ap}
-                </span>
+                <div className="flex items-center gap-2">
+                  <User className="w-3 h-3" />
+                  <span>Avis: {paiement.num_ap}</span>
+                </div>
               )}
             </div>
           </div>
           
           <div className="text-right">
             <div className="text-lg font-bold text-slate-900">
-              {formatMontant(paiement.montant)} Ar
+              {formatMontant(info.montantTotal)} Ar
             </div>
             <div className="text-sm text-slate-600">
-              Montant total
+              Montant total à payer
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Informations sur les tranches */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="font-semibold text-blue-800 flex items-center gap-2 mb-4">
+          <Layers className="w-5 h-5" />
+          Progression du paiement
+        </h4>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="text-center p-3 bg-white rounded-lg border border-blue-100">
+            <div className="text-2xl font-bold text-blue-600 flex items-center justify-center gap-2">
+              <Hash className="w-5 h-5" />
+              {info.numeroTranche}/{info.nombreTranche}
+            </div>
+            <div className="text-sm text-slate-600 mt-1">Dernière tranche payée</div>
+          </div>
+          
+          <div className="text-center p-3 bg-white rounded-lg border border-blue-100">
+            <div className="text-2xl font-bold text-blue-600">
+              {info.pourcentagePayeActuel}%
+            </div>
+            <div className="text-sm text-slate-600 mt-1">Payé actuellement</div>
+            <div className="text-xs text-slate-500">
+              {formatMontant(info.montantPayeActuel)} Ar
+            </div>
+          </div>
+          
+          <div className="text-center p-3 bg-white rounded-lg border border-blue-100">
+            <div className="text-2xl font-bold text-blue-600">
+              {formatMontant(info.montantRestant)} Ar
+            </div>
+            <div className="text-sm text-slate-600 mt-1">Reste à payer</div>
+          </div>
+        </div>
+        
+        <div className="mt-4">
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-slate-600">Progression actuelle</span>
+            <span className="text-slate-600">{info.pourcentagePayeActuel}%</span>
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full"
+              style={{ width: `${info.pourcentagePayeActuel}%` }}
+            ></div>
           </div>
         </div>
       </div>
@@ -591,20 +778,20 @@ function Completerpaiement({ paiement, onClose }) {
         <div className="space-y-4">
           <h4 className="font-semibold text-slate-800 flex items-center gap-2">
             <DollarSign className="w-4 h-4" />
-            Montants
+            Montants pour la prochaine tranche
           </h4>
           
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-slate-600">Montant restant à payer :</span>
-              <span className="font-bold text-red-600">
-                {formatMontant(paiement.montant_reste)} Ar
+              <span className="text-slate-600">Prochaine tranche :</span>
+              <span className="font-bold text-blue-700">
+                Tranche {formData.numero_tranche_actuelle}/{info.nombreTranche}
               </span>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Montant à payer maintenant *
+                Montant à payer pour cette tranche *
               </label>
               <div className="relative">
                 <input
@@ -613,8 +800,8 @@ function Completerpaiement({ paiement, onClose }) {
                   value={formData.montant_paye}
                   onChange={handleMontantChange}
                   min="1"
-                  max={paiement.montant_reste}
-                  step="100"
+                  max={info.montantRestant}
+                  step="1"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -622,32 +809,18 @@ function Completerpaiement({ paiement, onClose }) {
                   Ar
                 </span>
               </div>
-              <div className="flex gap-2 mt-2">
-                {[paiement.montant_reste / 2, paiement.montant_reste / 3, paiement.montant_reste].map((montant, index) => {
-                  const labels = ['Moitié', 'Tiers', 'Total'];
-                  const montantArrondi = Math.floor(montant / 100) * 100; // Arrondir à la centaine
-                  return (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setFormData(prev => ({
-                        ...prev,
-                        montant_paye: montantArrondi
-                      }))}
-                      className="text-xs px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700"
-                    >
-                      {labels[index]} ({formatMontant(montantArrondi)} Ar)
-                    </button>
-                  );
-                })}
-              </div>
             </div>
             
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              <span className="text-slate-600">Nouveau montant restant :</span>
-              <span className={`font-bold ${calculerMontantRestant() > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                {formatMontant(calculerMontantRestant())} Ar
-              </span>
+              <span className="text-slate-600">Après paiement :</span>
+              <div className="text-right">
+                <div className={`font-bold ${info.nouveauMontantRestant > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {formatMontant(info.nouveauMontantRestant)} Ar restant
+                </div>
+                <div className="text-xs text-slate-500">
+                  {info.nouveauPourcentagePaye}% du total payé
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -655,7 +828,7 @@ function Completerpaiement({ paiement, onClose }) {
         <div className="space-y-4">
           <h4 className="font-semibold text-slate-800 flex items-center gap-2">
             <Calendar className="w-4 h-4" />
-            Informations générales
+            Informations de paiement
           </h4>
           
           <div className="space-y-3">
@@ -711,41 +884,63 @@ function Completerpaiement({ paiement, onClose }) {
       {renderChampsSpecifiques()}
 
       {/* Résumé */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-semibold text-blue-800 mb-3">Résumé du paiement</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+        <h4 className="font-semibold text-emerald-800 mb-3">Résumé de la transaction</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
               {getModeIcon(formData.mode_paiement)}
               <span className="font-medium text-slate-900">{formData.mode_paiement}</span>
             </div>
+            <div className="text-sm text-slate-600 flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              {new Date(formData.date_paiement).toLocaleDateString('fr-FR')}
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Hash className="w-4 h-4 text-slate-600" />
+              <span className="font-medium text-slate-900">
+                Tranche {formData.numero_tranche_actuelle}/{info.nombreTranche}
+              </span>
+            </div>
             <div className="text-sm text-slate-600">
-              {formData.date_paiement && (
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {new Date(formData.date_paiement).toLocaleDateString('fr-FR')}
-                </div>
-              )}
+              {formData.numero_tranche_actuelle === info.nombreTranche ? 
+                'Dernière tranche' : 
+                `Prochaine tranche`}
             </div>
           </div>
           
           <div className="text-right">
-            <div className="text-2xl font-bold text-blue-600">
+            <div className="text-2xl font-bold text-emerald-600">
               {formatMontant(formData.montant_paye)} Ar
             </div>
             <div className="text-sm text-slate-600">
-              Montant payé
+              Montant de cette tranche
             </div>
-            {calculerMontantRestant() > 0 && (
-              <div className="text-sm text-orange-600 mt-1">
-                Reste à payer : {formatMontant(calculerMontantRestant())} Ar
-              </div>
-            )}
-            {calculerMontantRestant() <= 0 && (
-              <div className="text-sm text-green-600 mt-1">
-                ✓ Paiement complété à 100%
-              </div>
-            )}
+            <div className={`text-sm mt-1 ${info.nouveauMontantRestant > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+              {info.nouveauMontantRestant > 0 ? 
+                `Reste: ${formatMontant(info.nouveauMontantRestant)} Ar` : 
+                '✓ Paiement complété'}
+            </div>
+          </div>
+        </div>
+        
+        {/* Nouvelle progression */}
+        <div className="mt-4 pt-4 border-t border-emerald-200">
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-slate-600">Nouvelle progression après paiement</span>
+            <span className="text-slate-600">{info.nouveauPourcentagePaye}%</span>
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-2">
+            <div 
+              className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${info.nouveauPourcentagePaye}%` }}
+            ></div>
+          </div>
+          <div className="text-xs text-slate-500 mt-1 text-center">
+            {formatMontant(info.montantTotalPaye)} Ar payés sur {formatMontant(info.montantTotal)} Ar
           </div>
         </div>
       </div>
@@ -784,8 +979,10 @@ function Completerpaiement({ paiement, onClose }) {
             </>
           ) : (
             <>
-              <CheckCircle className="w-4 h-4" />
-              Confirmer le paiement
+              <Plus className="w-4 h-4" />
+              {info.nouveauMontantRestant <= 0 ? 
+                'Finaliser le paiement' : 
+                `Payer la tranche ${formData.numero_tranche_actuelle}`}
             </>
           )}
         </button>
