@@ -66,31 +66,58 @@ function Gererpaiement() {
         const paiementsData = result.data || [];
         console.log('✅ Paiements récupérés:', paiementsData);
         
-        // Analyse des paiements par statut et type
+        // Classification améliorée des paiements
         const complets = paiementsData.filter(p => {
           const statut = p.statut?.toLowerCase();
-          return statut === 'complet' || 
-                 statut === 'payé' ||
-                 statut === 'terminé' ||
-                 (p.montant_reste === 0 || p.montant_reste === null) ||
-                 (p.numero_tranche && p.nombre_tranche && p.numero_tranche === p.nombre_tranche);
+          const montantRestant = parseFloat(p.montant_reste) || 0;
+          
+          // Paiement considéré comme complet si :
+          // 1. Statut est "payé", "complet", "terminé"
+          // 2. Montant restant est 0 ou null
+          // 3. C'est la dernière tranche
+          const estComplet = 
+            statut === 'payé' || 
+            statut === 'complet' || 
+            statut === 'terminé' ||
+            montantRestant === 0 ||
+            (p.nombre_tranche && p.nombre_tranche > 0 && p.numero_tranche === p.nombre_tranche);
+          
+          return estComplet;
         });
         
         const partiels = paiementsData.filter(p => {
           const statut = p.statut?.toLowerCase();
-          const hasTranches = p.nombre_tranche && p.nombre_tranche > 1;
-          const hasMontantRestant = p.montant_reste && p.montant_reste > 0;
+          const montantRestant = parseFloat(p.montant_reste) || 0;
           
-          return statut === 'partiel' || 
-                 statut === 'partiellement payé' ||
-                 statut === 'en cours' ||
-                 hasTranches ||
-                 hasMontantRestant;
+          // Paiement considéré comme partiel si :
+          // 1. Statut est "partiel", "partiellement payé", "en cours"
+          // 2. Montant restant > 0
+          // 3. Ce n'est pas la dernière tranche
+          const estPartiel = 
+            statut === 'partiel' || 
+            statut === 'partiellement payé' || 
+            statut === 'en cours' ||
+            montantRestant > 0 ||
+            (p.nombre_tranche && p.nombre_tranche > 0 && p.numero_tranche < p.nombre_tranche);
+          
+          return estPartiel;
         });
 
         console.log('📊 Paiements complets:', complets.length);
         console.log('📊 Paiements partiels:', partiels.length);
-        console.log('📊 Exemple de paiement partiel:', partiels[0]);
+        
+        // Mettre à jour les statistiques
+        const totalMontant = paiementsData.reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
+        const montantEnAttente = partiels.reduce((sum, p) => sum + (parseFloat(p.montant_reste) || 0), 0);
+        
+        setStats(prev => ({
+          ...prev,
+          total_paiements: paiementsData.length,
+          total_montant: totalMontant,
+          paiements_complets: complets.length,
+          paiements_partiels: partiels.length,
+          montant_en_attente: montantEnAttente
+        }));
 
         setPaiements(paiementsData);
         setPaiementsComplets(complets);
@@ -124,33 +151,17 @@ function Gererpaiement() {
       
       if (result.success) {
         console.log('📊 Statistiques récupérées:', result.data);
-        
-        // Calculer des statistiques supplémentaires
-        const allPaiements = paiements.length > 0 ? paiements : 
-          result.data.paiements ? result.data.paiements : [];
-        
-        const paiementsPartiels = allPaiements.filter(p => 
-          p.montant_reste > 0 || 
-          (p.nombre_tranche && p.nombre_tranche > 1 && 
-           p.numero_tranche && p.numero_tranche < p.nombre_tranche)
-        );
-        
-        const montantEnAttente = paiementsPartiels.reduce((sum, p) => 
-          sum + (parseFloat(p.montant_reste) || 0), 0);
-        
-        setStats({
-          ...result.data,
-          paiements_partiels: paiementsPartiels.length,
-          paiements_en_tranches: allPaiements.filter(p => p.nombre_tranche && p.nombre_tranche > 1).length,
-          montant_en_attente: montantEnAttente
-        });
+        setStats(prev => ({
+          ...prev,
+          ...result.data
+        }));
       } else {
         console.warn('⚠️ Réponse API sans succès pour stats:', result);
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement des statistiques:', error);
     }
-  }, [paiements]);
+  }, []);
 
   // Initial fetch
   useEffect(() => {
@@ -262,45 +273,33 @@ function Gererpaiement() {
 
   // Couleur pour le statut
   const getStatutColor = (statut) => {
-    switch (statut?.toLowerCase()) {
-      case 'payé':
-      case 'complet':
-      case 'terminé':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'partiellement payé':
-      case 'en cours':
-      case 'partiel':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'en attente':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'annulé':
-      case 'refusé':
-      case 'échec':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-slate-100 text-slate-800 border-slate-200';
+    const statutLower = statut?.toLowerCase();
+    if (statutLower === 'payé' || statutLower === 'complet' || statutLower === 'terminé') {
+      return 'bg-green-100 text-green-800 border-green-200';
+    } else if (statutLower === 'partiellement payé' || statutLower === 'en cours' || statutLower === 'partiel') {
+      return 'bg-blue-100 text-blue-800 border-blue-200';
+    } else if (statutLower === 'en attente') {
+      return 'bg-orange-100 text-orange-800 border-orange-200';
+    } else if (statutLower === 'annulé' || statutLower === 'refusé' || statutLower === 'échec') {
+      return 'bg-red-100 text-red-800 border-red-200';
+    } else {
+      return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
 
   // Icône pour le statut
   const getStatutIcon = (statut) => {
-    switch (statut?.toLowerCase()) {
-      case 'payé':
-      case 'complet':
-      case 'terminé':
-        return <CheckCircle className="w-4 h-4" />;
-      case 'partiellement payé':
-      case 'en cours':
-      case 'partiel':
-        return <Clock className="w-4 h-4" />;
-      case 'en attente':
-        return <Clock className="w-4 h-4 text-orange-600" />;
-      case 'annulé':
-      case 'refusé':
-      case 'échec':
-        return <XCircle className="w-4 h-4" />;
-      default:
-        return <AlertCircle className="w-4 h-4" />;
+    const statutLower = statut?.toLowerCase();
+    if (statutLower === 'payé' || statutLower === 'complet' || statutLower === 'terminé') {
+      return <CheckCircle className="w-4 h-4 text-green-600" />;
+    } else if (statutLower === 'partiellement payé' || statutLower === 'en cours' || statutLower === 'partiel') {
+      return <Clock className="w-4 h-4 text-blue-600" />;
+    } else if (statutLower === 'en attente') {
+      return <Clock className="w-4 h-4 text-orange-600" />;
+    } else if (statutLower === 'annulé' || statutLower === 'refusé' || statutLower === 'échec') {
+      return <XCircle className="w-4 h-4 text-red-600" />;
+    } else {
+      return <AlertCircle className="w-4 h-4 text-slate-600" />;
     }
   };
 
@@ -382,9 +381,8 @@ function Gererpaiement() {
         </div>
       </div>
 
-      {/* Cartes de statistiques améliorées */}
+      {/* Cartes de statistiques */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total paiements */}
         <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -398,30 +396,26 @@ function Gererpaiement() {
           </div>
         </div>
 
-        {/* Paiements aujourd'hui */}
         <div className="bg-white rounded-xl shadow-sm border border-green-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Aujourd'hui</p>
-              <p className="text-2xl font-bold text-green-600">{stats.paiements_aujourdhui}</p>
-              <p className="text-sm font-semibold text-slate-900">
-                {formatMontant(stats.montant_aujourdhui)} Ar
-              </p>
+              <p className="text-sm text-slate-600">Paiements Complets</p>
+              <p className="text-2xl font-bold text-green-600">{stats.paiements_complets}</p>
+              <p className="text-xs text-slate-500">Statut: Payé/Complet</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
-              <Calendar className="w-6 h-6 text-green-600" />
+              <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
           </div>
         </div>
 
-        {/* Paiements partiels en attente */}
         <div className="bg-white rounded-xl shadow-sm border border-orange-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">En attente</p>
+              <p className="text-sm text-slate-600">Paiements Partiels</p>
               <p className="text-2xl font-bold text-orange-600">{stats.paiements_partiels}</p>
               <p className="text-sm font-semibold text-slate-900">
-                {formatMontant(stats.montant_en_attente)} Ar
+                {formatMontant(stats.montant_en_attente)} Ar en attente
               </p>
             </div>
             <div className="p-3 bg-orange-100 rounded-full">
@@ -430,16 +424,17 @@ function Gererpaiement() {
           </div>
         </div>
 
-        {/* Paiements en tranches */}
         <div className="bg-white rounded-xl shadow-sm border border-purple-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">En tranches</p>
-              <p className="text-2xl font-bold text-purple-600">{stats.paiements_en_tranches}</p>
-              <p className="text-xs text-slate-500">Paiements échelonnés</p>
+              <p className="text-sm text-slate-600">Aujourd'hui</p>
+              <p className="text-2xl font-bold text-purple-600">{stats.paiements_aujourdhui}</p>
+              <p className="text-sm font-semibold text-slate-900">
+                {formatMontant(stats.montant_aujourdhui)} Ar
+              </p>
             </div>
             <div className="p-3 bg-purple-100 rounded-full">
-              <PieChart className="w-6 h-6 text-purple-600" />
+              <Calendar className="w-6 h-6 text-purple-600" />
             </div>
           </div>
         </div>
@@ -479,7 +474,7 @@ function Gererpaiement() {
             <Clock className="w-5 h-5 text-blue-600" />
             Paiements Partiels ({filteredPaiementsPartiels.length})
             <span className="text-sm font-normal text-slate-500 ml-2">
-              - Montant total en attente: {formatMontant(stats.montant_en_attente)} Ar
+              - Montant en attente: {formatMontant(stats.montant_en_attente)} Ar
             </span>
           </h2>
           
@@ -510,6 +505,12 @@ function Gererpaiement() {
                 <AlertCircle className="w-5 h-5 text-red-600" />
                 <p className="text-red-700 font-medium">Erreur: {error}</p>
               </div>
+              <button
+                onClick={fetchPaiements}
+                className="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+              >
+                Réessayer
+              </button>
             </div>
           ) : filteredPaiementsPartiels.length === 0 ? (
             <div className="text-center p-6 bg-slate-50 rounded-lg">
@@ -794,7 +795,7 @@ function Gererpaiement() {
                       return (
                         <tr key={paiement.idpaiement} className="hover:bg-green-50 transition-colors">
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="text-sm font-mono text-slate-900">#{paiement.idpaiement}</div>
+                            <div className="text-sm font-mono font-bold text-slate-900">#{paiement.idpaiement}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -816,17 +817,22 @@ function Gererpaiement() {
                                   {paiement.reference_ft || `FT-${paiement.idft || 'N/A'}`}
                                 </div>
                               </div>
+                              <div className="text-xs text-slate-500">
+                                Contact: {paiement.contact || 'N/A'}
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="text-base font-bold text-slate-900">
-                              {formatMontant(paiement.montant)} Ar
-                            </div>
-                            {tranchesInfo.nombreTranche > 1 && (
-                              <div className="text-xs text-slate-500">
-                                {tranchesInfo.nombreTranche} tranches
+                            <div className="space-y-1">
+                              <div className="text-base font-bold text-slate-900">
+                                {formatMontant(paiement.montant)} Ar
                               </div>
-                            )}
+                              {tranchesInfo.nombreTranche > 1 && (
+                                <div className="text-xs text-slate-500">
+                                  {tranchesInfo.nombreTranche} tranches
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -837,8 +843,8 @@ function Gererpaiement() {
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               {getStatutIcon(paiement.statut)}
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatutColor(paiement.statut)}`}>
-                                {paiement.statut || 'Complet'}
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatutColor(paiement.statut)}`}>
+                                {paiement.statut || 'Payé'}
                               </span>
                             </div>
                           </td>
@@ -964,7 +970,7 @@ function Gererpaiement() {
         </div>
       )}
 
-      {/* Modal de détails du paiement - AMELIORE */}
+      {/* Modal de détails du paiement */}
       {showDetailsModal && selectedPaiement && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -975,7 +981,10 @@ function Gererpaiement() {
                   Détails du Paiement
                 </h2>
                 <p className="text-slate-600 mt-1">
-                  ID: #{selectedPaiement.idpaiement} • {formatDate(selectedPaiement.date_paiement)}
+                  ID: #{selectedPaiement.idpaiement} • {formatDate(selectedPaiement.date_paiement)} • 
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${getStatutColor(selectedPaiement.statut)}`}>
+                    {selectedPaiement.statut || (selectedPaiement.montant_reste > 0 ? 'Partiel' : 'Payé')}
+                  </span>
                 </p>
               </div>
               <button
@@ -1002,7 +1011,7 @@ function Gererpaiement() {
                       <dd className="font-medium text-slate-900">{formatDate(selectedPaiement.date_paiement)}</dd>
                     </div>
                     <div className="flex justify-between">
-                      <dt className="text-slate-600">Montant:</dt>
+                      <dt className="text-slate-600">Montant payé:</dt>
                       <dd className="font-bold text-slate-900 text-lg">
                         {formatMontant(selectedPaiement.montant)} Ar
                       </dd>
@@ -1021,15 +1030,19 @@ function Gererpaiement() {
                   <dl className="space-y-3">
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Statut:</dt>
-                      <dd>
+                      <dd className="flex items-center gap-2">
+                        {getStatutIcon(selectedPaiement.statut)}
                         <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatutColor(selectedPaiement.statut)}`}>
-                          {selectedPaiement.statut || 'Non spécifié'}
+                          {selectedPaiement.statut || (selectedPaiement.montant_reste > 0 ? 'Partiel' : 'Payé')}
                         </span>
                       </dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Mode paiement:</dt>
-                      <dd className="font-medium text-slate-900">{selectedPaiement.mode_paiement || 'N/A'}</dd>
+                      <dd className="font-medium text-slate-900 flex items-center gap-2">
+                        {getModeIcon(selectedPaiement.mode_paiement)}
+                        {selectedPaiement.mode_paiement || 'N/A'}
+                      </dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Référence:</dt>

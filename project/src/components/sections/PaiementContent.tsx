@@ -17,7 +17,8 @@ interface AvisPaiement {
   date_ap: string;
   montant: number;
   montant_lettre: string;
-  statut: 'Payé' | 'En attente' | 'En cours' | 'Retard' | 'Annulé';
+  // Tous les statuts possibles dans la base de données
+  statut: 'Payé' | 'En attente' | 'En cours' | 'Retard' | 'Annulé' | 'Partiellement payé' | 'En retard';
   methode_paiement?: string;
   description?: string;
   idft: number;
@@ -70,7 +71,7 @@ export default function PaiementContent() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showPasserPaiementModal, setShowPasserPaiementModal] = useState(false);
   const [selectedAvisForPasserPaiement, setSelectedAvisForPasserPaiement] = useState<AvisPaiement | null>(null);
-  const [filtreStatut, setFiltreStatut] = useState<'tous' | 'En attente' | 'En cours' | 'Payé' | 'Retard' | 'Annulé'>('tous');
+  const [filtreStatut, setFiltreStatut] = useState<'tous' | 'En attente' | 'En cours' | 'Payé' | 'Retard' | 'Annulé' | 'Partiellement payé'>('tous');
   const [stats, setStats] = useState<PaiementStats>({
     totalEnAttente: 0,
     totalEnCours: 0,
@@ -86,68 +87,22 @@ export default function PaiementContent() {
   const [selectedAvisForMED, setSelectedAvisForMED] = useState<AvisPaiement | null>(null);
   const [newPaymentDate, setNewPaymentDate] = useState('');
 
-  // Fonctions pour vérifier les dates
-  const isPastDue = (avis: AvisPaiement) => {
-    if (!avis.fin_premier_paiement) return false;
-    const dueDate = new Date(avis.fin_premier_paiement);
-    const currentDate = new Date();
-    
-    // Réinitialiser les heures pour comparer seulement les dates
-    dueDate.setHours(0, 0, 0, 0);
-    currentDate.setHours(0, 0, 0, 0);
-    
-    return dueDate < currentDate;
-  };
-
-  const isToday = (avis: AvisPaiement) => {
-    if (!avis.fin_premier_paiement) return false;
-    const dueDate = new Date(avis.fin_premier_paiement);
-    const currentDate = new Date();
-    
-    // Réinitialiser les heures pour comparer seulement les dates
-    dueDate.setHours(0, 0, 0, 0);
-    currentDate.setHours(0, 0, 0, 0);
-    
-    return dueDate.getTime() === currentDate.getTime();
-  };
-
-  const isFuture = (avis: AvisPaiement) => {
-    if (!avis.fin_premier_paiement) return false;
-    const dueDate = new Date(avis.fin_premier_paiement);
-    const currentDate = new Date();
-    
-    // Réinitialiser les heures pour comparer seulement les dates
-    dueDate.setHours(0, 0, 0, 0);
-    currentDate.setHours(0, 0, 0, 0);
-    
-    return dueDate > currentDate;
-  };
-
-  // Déterminer le statut effectif basé sur la date de premier paiement
-  const getEffectiveStatus = (avis: AvisPaiement) => {
-    // Si l'avis est payé ou annulé, on garde ce statut
-    if (avis.statut === 'Payé' || avis.statut === 'Annulé') return avis.statut;
-    
-    // Si l'avis est marqué comme retard, on garde ce statut
-    if (avis.statut === 'Retard') return 'Retard';
-    
-    // Nouvelle logique basée sur la date de premier paiement
-    if (isPastDue(avis)) {
-      return 'Retard';
-    } else if (isToday(avis)) {
-      return 'En cours';
-    } else if (isFuture(avis)) {
-      return 'En attente';
-    }
-    
-    // Par défaut, retourner le statut existant
-    return avis.statut;
-  };
-
-  // Vérifier si un avis peut être payé (pas encore payé et pas annulé)
+  // Fonction pour vérifier si un avis peut être payé
+  // Seulement pour les avis qui ne sont pas encore complètement payés et non annulés
   const canBePaid = (avis: AvisPaiement) => {
-    const status = getEffectiveStatus(avis);
-    return status !== 'Payé' && status !== 'Annulé';
+    // Les avis qui peuvent être payés :
+    // 1. En cours
+    // 2. Partiellement payé (pour compléter)
+    // 3. En attente
+    // 4. Retard/En retard (pour régulariser)
+    const paiementPossible = 
+      avis.statut === 'En cours' || 
+      avis.statut === 'En attente' || 
+      avis.statut === 'Retard' || 
+      avis.statut === 'En retard';
+    
+    // Ne pas afficher pour les avis déjà payés ou annulés
+    return paiementPossible && avis.statut !== 'Payé' && avis.statut !== 'Annulé';
   };
 
   // Récupérer la liste des avis de paiement
@@ -167,7 +122,13 @@ export default function PaiementContent() {
         params.append('q', searchTerm);
       }
       
-      // Ne pas utiliser la route statut-calcule, on filtrera côté client
+      // Si un filtre de statut est sélectionné, l'ajouter aux paramètres
+      if (filtreStatut !== 'tous') {
+        // Convertir les noms affichés en noms de base de données si nécessaire
+        let statutApi = filtreStatut;
+        if (filtreStatut === 'En retard') statutApi = 'Retard';
+        params.append('statut', statutApi);
+      }
       
       const fullUrl = `${url}?${params.toString()}`;
       console.log('Fetching avis list from:', fullUrl);
@@ -183,16 +144,8 @@ export default function PaiementContent() {
       if (result.success) {
         const avisData = result.data || [];
         
-        // Filtrer par statut côté client si nécessaire
+        // Filtrer par recherche texte si nécessaire (côté client)
         let filteredData = avisData;
-        if (filtreStatut !== 'tous') {
-          filteredData = avisData.filter(avis => {
-            const effectiveStatus = getEffectiveStatus(avis);
-            return effectiveStatus === filtreStatut;
-          });
-        }
-        
-        // Filtrer par recherche texte si nécessaire
         if (searchTerm.trim()) {
           const searchLower = searchTerm.toLowerCase().trim();
           filteredData = filteredData.filter(avis => (
@@ -225,7 +178,7 @@ export default function PaiementContent() {
     }
   }, [page, pageSize, searchTerm, filtreStatut]);
 
-  // Calculer les statistiques
+  // Calculer les statistiques basées sur le statut réel
   const calculerStatistiques = (avisList: AvisPaiement[]) => {
     const statsCalcul: PaiementStats = {
       totalEnAttente: 0,
@@ -240,13 +193,13 @@ export default function PaiementContent() {
     };
 
     avisList.forEach(avis => {
-      const status = getEffectiveStatus(avis);
-      switch (status) {
+      switch (avis.statut) {
         case 'En attente':
           statsCalcul.totalEnAttente++;
           statsCalcul.totalMontantEnAttente += avis.montant;
           break;
         case 'En cours':
+        case 'Partiellement payé': // Inclure "Partiellement payé" dans "En cours" pour les stats
           statsCalcul.totalEnCours++;
           statsCalcul.totalMontantEnCours += avis.montant;
           break;
@@ -255,6 +208,7 @@ export default function PaiementContent() {
           statsCalcul.totalMontantPaye += avis.montant;
           break;
         case 'Retard':
+        case 'En retard':
           statsCalcul.totalRetard++;
           statsCalcul.totalMontantRetard += avis.montant;
           break;
@@ -396,7 +350,10 @@ export default function PaiementContent() {
         return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'En cours':
         return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Partiellement payé':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'Retard':
+      case 'En retard':
         return 'bg-red-100 text-red-800 border-red-200';
       case 'Annulé':
         return 'bg-slate-100 text-slate-800 border-slate-200';
@@ -408,15 +365,18 @@ export default function PaiementContent() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'Payé':
-        return <CheckCircle className="w-4 h-4" />;
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'En attente':
-        return <Clock className="w-4 h-4" />;
+        return <Clock className="w-4 h-4 text-orange-600" />;
       case 'En cours':
         return <Clock className="w-4 h-4 text-blue-600" />;
+      case 'Partiellement payé':
+        return <DollarSign className="w-4 h-4 text-purple-600" />;
       case 'Retard':
-        return <AlertCircle className="w-4 h-4" />;
+      case 'En retard':
+        return <AlertCircle className="w-4 h-4 text-red-600" />;
       case 'Annulé':
-        return <XCircle className="w-4 h-4" />;
+        return <XCircle className="w-4 h-4 text-slate-600" />;
       default:
         return <Clock className="w-4 h-4" />;
     }
@@ -467,7 +427,28 @@ export default function PaiementContent() {
 
   // Filtrer les avis par statut
   const getAvisByStatus = (status: string) => {
-    return avisList.filter(avis => getEffectiveStatus(avis) === status);
+    return avisList.filter(avis => avis.statut === status);
+  };
+
+  // Fonction pour normaliser le nom du statut pour l'affichage
+  const getDisplayStatusName = (status: string) => {
+    switch (status) {
+      case 'En cours':
+        return 'En cours de paiement';
+      case 'Partiellement payé':
+        return 'Partiellement payés';
+      case 'En attente':
+        return 'En attente de paiement';
+      case 'Retard':
+      case 'En retard':
+        return 'En retard de paiement';
+      case 'Payé':
+        return 'Paiements effectués';
+      case 'Annulé':
+        return 'Avis annulés';
+      default:
+        return status;
+    }
   };
 
   // Calculer les indices affichés
@@ -482,22 +463,19 @@ export default function PaiementContent() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center">
           {getStatusIcon(statut)}
-          <span className="ml-2">
-            {statut === 'En attente' ? 'En attente de paiement' :
-             statut === 'En cours' ? 'En cours de paiement' :
-             statut === 'Retard' ? 'En retard de paiement' :
-             statut === 'Payé' ? 'Paiements effectués' : 'Avis annulés'}
-          </span>
+          <span className="ml-2">{getDisplayStatusName(statut)}</span>
           <span className="ml-2 px-2 py-1 text-xs rounded font-medium"
             style={{
               backgroundColor: statut === 'Payé' ? '#dcfce7' : 
                               statut === 'En attente' ? '#ffedd5' :
                               statut === 'En cours' ? '#dbeafe' :
-                              statut === 'Retard' ? '#fee2e2' : '#f1f5f9',
+                              statut === 'Partiellement payé' ? '#f3e8ff' :
+                              statut === 'Retard' || statut === 'En retard' ? '#fee2e2' : '#f1f5f9',
               color: statut === 'Payé' ? '#166534' : 
                     statut === 'En attente' ? '#9a3412' :
                     statut === 'En cours' ? '#1e40af' :
-                    statut === 'Retard' ? '#991b1b' : '#475569'
+                    statut === 'Partiellement payé' ? '#7e22ce' :
+                    statut === 'Retard' || statut === 'En retard' ? '#991b1b' : '#475569'
             }}>
             {avisListStatut.length} avis
           </span>
@@ -529,7 +507,6 @@ export default function PaiementContent() {
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {avisListStatut.slice(startIndex, Math.min(endIndex, startIndex + pageSize)).map((avis) => {
-                const effectiveStatus = getEffectiveStatus(avis);
                 const peutEtrePaye = canBePaid(avis);
                 
                 return (
@@ -573,11 +550,11 @@ export default function PaiementContent() {
                       ) : null}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${getStatusColor(effectiveStatus)}`}>
-                        {getStatusIcon(effectiveStatus)}
-                        <span className="text-sm font-medium">{effectiveStatus}</span>
+                      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${getStatusColor(avis.statut)}`}>
+                        {getStatusIcon(avis.statut)}
+                        <span className="text-sm font-medium">{avis.statut}</span>
                       </div>
-                      {avis.methode_paiement && effectiveStatus === 'Payé' && (
+                      {avis.methode_paiement && avis.statut === 'Payé' && (
                         <div className="flex items-center gap-1 mt-1 text-xs text-slate-600">
                           {getMethodeIcon(avis.methode_paiement)}
                           {avis.methode_paiement}
@@ -602,7 +579,7 @@ export default function PaiementContent() {
                           <DownloadIcon className="w-4 h-4" />
                         </button>
                         
-                        {/* Bouton "Passer au paiement" - seulement pour les avis non payés et non annulés */}
+                        {/* Bouton "Passer au paiement" - seulement pour les avis qui peuvent être payés */}
                         {peutEtrePaye && (
                           <button
                             onClick={() => handleOpenPasserPaiementModal(avis)}
@@ -614,7 +591,7 @@ export default function PaiementContent() {
                         )}
 
                         {/* Bouton "Mise en demeure" - seulement pour les avis en retard */}
-                        {effectiveStatus === 'Retard' && (
+                        {(avis.statut === 'Retard' || avis.statut === 'En retard') && (
                           <button
                             onClick={() => handleOpenMiseEnDemeureModal(avis)}
                             className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
@@ -633,6 +610,17 @@ export default function PaiementContent() {
         </div>
       </div>
     );
+  };
+
+  // Regrouper tous les statuts uniques présents dans les données
+  const getAllUniqueStatuses = () => {
+    const statuses = new Set<string>();
+    avisList.forEach(avis => {
+      if (avis.statut) {
+        statuses.add(avis.statut);
+      }
+    });
+    return Array.from(statuses).sort();
   };
 
   return (
@@ -762,6 +750,7 @@ export default function PaiementContent() {
               <option value="tous">Tous les statuts</option>
               <option value="En attente">En attente</option>
               <option value="En cours">En cours</option>
+              <option value="Partiellement payé">Partiellement payé</option>
               <option value="Payé">Payés</option>
               <option value="Retard">En retard</option>
               <option value="Annulé">Annulés</option>
@@ -843,23 +832,13 @@ export default function PaiementContent() {
           </div>
         ) : (
           <>
-            {/* Si filtre "tous", montrer les tableaux séparés */}
+            {/* Si filtre "tous", montrer les tableaux séparés pour chaque statut */}
             {filtreStatut === 'tous' ? (
               <div className="space-y-6">
-                {/* Avis en retard */}
-                {renderTableauParStatut('Retard', getAvisByStatus('Retard'))}
-                
-                {/* Avis en attente */}
-                {renderTableauParStatut('En attente', getAvisByStatus('En attente'))}
-                
-                {/* Avis en cours */}
-                {renderTableauParStatut('En cours', getAvisByStatus('En cours'))}
-                
-                {/* Avis payés */}
-                {renderTableauParStatut('Payé', getAvisByStatus('Payé'))}
-                
-                {/* Avis annulés */}
-                {renderTableauParStatut('Annulé', getAvisByStatus('Annulé'))}
+                {/* Afficher les tableaux dans un ordre logique */}
+                {getAllUniqueStatuses().map(status => (
+                  renderTableauParStatut(status, getAvisByStatus(status))
+                ))}
               </div>
             ) : (
               // Si un statut spécifique est sélectionné, montrer uniquement ce tableau
@@ -875,7 +854,7 @@ export default function PaiementContent() {
                     : `Affichage de ${startIndex + 1} à ${endIndex} sur ${totalCount} résultats`}
                   {filtreStatut !== 'tous' && (
                     <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
-                      {filtreStatut}
+                      {getDisplayStatusName(filtreStatut)}
                     </span>
                   )}
                 </div>
@@ -987,8 +966,8 @@ export default function PaiementContent() {
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Statut:</dt>
                       <dd>
-                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(getEffectiveStatus(selectedAvis))}`}>
-                          {getEffectiveStatus(selectedAvis)}
+                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(selectedAvis.statut)}`}>
+                          {selectedAvis.statut}
                         </span>
                       </dd>
                     </div>
@@ -1093,7 +1072,7 @@ export default function PaiementContent() {
                   Télécharger PDF
                 </button>
                 
-                {/* Bouton "Passer au paiement" dans le modal - seulement si l'avis n'est pas payé */}
+                {/* Bouton "Passer au paiement" dans le modal - seulement si l'avis peut être payé */}
                 {canBePaid(selectedAvis) && (
                   <button
                     onClick={() => {
@@ -1107,16 +1086,18 @@ export default function PaiementContent() {
                   </button>
                 )}
                 
-                <button
-                  onClick={() => {
-                    setShowDetailsModal(false);
-                    handleAnnulerAvis(selectedAvis.id);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  <XCircle className="w-4 h-4" />
-                  Annuler l'Avis
-                </button>
+                {selectedAvis.statut !== 'Annulé' && selectedAvis.statut !== 'Payé' && (
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false);
+                      handleAnnulerAvis(selectedAvis.id);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Annuler l'Avis
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setShowDetailsModal(false)}
@@ -1189,8 +1170,8 @@ export default function PaiementContent() {
                     <div className="flex justify-between">
                       <dt className="text-slate-600">Statut:</dt>
                       <dd>
-                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(getEffectiveStatus(selectedAvisForMED))}`}>
-                          {getEffectiveStatus(selectedAvisForMED)}
+                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(selectedAvisForMED.statut)}`}>
+                          {selectedAvisForMED.statut}
                         </span>
                       </dd>
                     </div>

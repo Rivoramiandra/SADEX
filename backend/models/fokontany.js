@@ -1,42 +1,23 @@
-const pool = require('../config/db'); // Connexion PostgreSQL
+const pool = require('../config/db');
 
 const Fokontany = {
-  /**
-   * Récupère tous les fokontany
-   */
-  getAll: async () => {
-    try {
-      const result = await pool.query(`
-        SELECT 
-          id_fkt,
-          fkt,
-          firaisana,
-          distrika
-        FROM fokontany
-        ORDER BY id_fkt ASC
-      `);
-      return result.rows;
-    } catch (err) {
-      console.error("❌ Erreur getAll fokontany:", err);
-      throw err;
+    findByCoordinates: async (x, y) => {
+        const query = `
+            SELECT 
+                adm4_en as fokontany,
+                adm3_en as commune,
+                adm2_en as district,
+                ST_AsText(ST_Centroid(geom)) as centre_lambert,
+                ST_Area(geom) as superficie_m2
+            FROM fokontany
+            WHERE ST_Contains(
+                geom, 
+                ST_SetSRID(ST_MakePoint($1, $2), 29702)
+            );
+        `;
+        const result = await pool.query(query, [x, y]);
+        return result.rows[0] || null;
     }
-  },
-
-  /**
-   * Optionnel : Récupérer les fokontany par district
-   */
-  getByDistrika: async (distrika) => {
-    try {
-      const result = await pool.query(
-        'SELECT * FROM fokontany WHERE distrika = $1 ORDER BY fkt ASC',
-        [distrika]
-      );
-      return result.rows;
-    } catch (err) {
-      console.error(`❌ Erreur getByDistrika :`, err);
-      throw err;
-    }
-  }
 };
 
 module.exports = Fokontany;

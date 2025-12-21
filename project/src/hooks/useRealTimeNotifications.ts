@@ -20,7 +20,7 @@ export const useRealTimeNotifications = () => {
     console.log('🔗 Tentative de connexion Socket.io...');
     
     // CORRECTION : Utiliser localhost:5000 (backend) au lieu de 3000 (frontend)
-    const newSocket = io('http://localhost:5000', {
+    const newSocket = io('http://localhost:3000', {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,

@@ -323,7 +323,7 @@ const response = await fetch(`http://localhost:3000/api/avis-de-paiement/${avisI
         montant_tranche: paymentType === 'tranche' ? parseFloat(paymentCalculations.montantParTranche.toFixed(2)) : undefined,
         numero_tranche: paymentType === 'tranche' ? 1 : undefined,
         contact: formData.contact?.trim() || undefined,
-        statut: paymentType === 'complet' ? 'Payé' : 'Partiellement payé'
+        statut: paymentType === 'complet' ? 'Payé' : 'Partiel'
       };
 
       console.log('Envoi du paiement:', paymentData);
