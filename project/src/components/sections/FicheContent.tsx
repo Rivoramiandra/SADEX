@@ -456,13 +456,7 @@ export default function FicheContent() {
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Procès-verbaux de Fin de Traitement</h1>
           <p className="text-slate-600">Gestion et consultation des procès-verbaux établis</p>
         </div>
-        <button 
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all font-medium"
-          onClick={() => window.location.href = '/ft/nouveau'}
-        >
-          <Plus className="w-5 h-5" />
-          Nouveau procès-verbal
-        </button>
+       
       </div>
 
       {/* Cartes de statistiques */}

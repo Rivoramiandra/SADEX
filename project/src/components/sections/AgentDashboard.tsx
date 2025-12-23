@@ -1,59 +1,51 @@
-import {
-  LayoutDashboard,
+import React, { useState } from 'react';
+import { 
   Map,
+  ClipboardCheck,
   Calendar,
-  FileCheck,
-  Receipt,
-  CreditCard,
   Bell,
   LogOut,
   Menu,
   ChevronLeft,
-  DollarSign,
   AlertTriangle
 } from 'lucide-react';
-import { SidebarProps, Section } from '../types';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
-const menuItems = [
-  { id: 'dashboard' as Section, label: 'Tableau de bord', icon: LayoutDashboard },
-  { id: 'cartographie' as Section, label: 'Cartographie', icon: Map },
-  { id: 'rendezvous' as Section, label: 'Rendez-vous pour faire FT', icon: Calendar },
-  { id: 'fiche' as Section, label: 'FT Etabli', icon: FileCheck },
-  { id: 'avis' as Section, label: 'Avis de paiement', icon: Receipt },
-  { id: 'paiement' as Section, label: 'Passer au paiement', icon: CreditCard },
-  { id: 'gererpaiement' as Section, label: 'Gerer le paiement', icon: DollarSign },
-];
+import CartographieContent from './CartographieContent';
+import DescenteContent from './DescenteContent';
+import RendezvousFT from './Rdv';
 
-export default function Sidebar({ activeSection, setActiveSection, collapsed, setCollapsed }: SidebarProps) {
-  const [isOpen, setIsOpen] = useState(false);
+type AgentSection = 'cartographie' | 'descente' | 'rendezvous';
+
+export default function AgentDashboard() {
+  const [activeSection, setActiveSection] = useState<AgentSection>('cartographie');
+  const [collapsed, setCollapsed] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const navigate = useNavigate();
 
-  const handleItemClick = (section: Section) => {
-    setActiveSection(section);
-    if (window.innerWidth < 1024) {
-      setIsOpen(false);
-    }
-  };
-
-  const toggleCollapse = () => {
-    setCollapsed(!collapsed);
-    if (window.innerWidth < 1024) {
-      setIsOpen(!isOpen);
-    }
-  };
+  // Déterminer si on est dans la section cartographie
+  const isCartographie = activeSection === 'cartographie';
 
   const handleLogoutConfirm = () => {
-    localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userType');
+    localStorage.removeItem('isAuthenticated');
     setShowLogoutModal(false);
-    navigate('/login');
+    window.location.href = '/login';
   };
 
   const handleLogoutCancel = () => {
     setShowLogoutModal(false);
+  };
+
+  const renderContent = () => {
+    switch (activeSection) {
+      case 'cartographie':
+        return <CartographieContent />;
+      case 'descente':
+        return <DescenteContent />;
+      case 'rendezvous':
+        return <RendezvousFT />;
+      default:
+        return <CartographieContent />;
+    }
   };
 
   return (
@@ -96,7 +88,66 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
         </div>
       )}
 
-      {/* Overlay pour sidebar mobile */}
+      {/* Conteneur principal qui occupe toute la hauteur restante après le header (h-15 = 3.75rem) */}
+      <div className="flex w-full h-[calc(100vh-4rem)] overflow-hidden bg-gray-50">
+        {/* Sidebar pour Agent */}
+        <AgentSidebar
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          onLogoutClick={() => setShowLogoutModal(true)}
+        />
+        
+        {/* Contenu principal - Conditionnel pour la cartographie */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <div className={`flex-1 overflow-auto ${isCartographie ? '' : 'p-4 lg:p-6 bg-gray-50'}`}>
+            {renderContent()}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Composant Sidebar pour Agent
+function AgentSidebar({ 
+  activeSection, 
+  setActiveSection, 
+  collapsed, 
+  setCollapsed,
+  onLogoutClick
+}: { 
+  activeSection: AgentSection;
+  setActiveSection: (section: AgentSection) => void;
+  collapsed: boolean;
+  setCollapsed: (collapsed: boolean) => void;
+  onLogoutClick: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const menuItems = [
+    { id: 'cartographie' as AgentSection, label: 'Cartographie', icon: Map },
+    { id: 'descente' as AgentSection, label: 'Descente sur terrain', icon: ClipboardCheck },
+    { id: 'rendezvous' as AgentSection, label: 'Rendez-vous pour faire FT', icon: Calendar },
+  ];
+
+  const handleItemClick = (section: AgentSection) => {
+    setActiveSection(section);
+    if (window.innerWidth < 1024) {
+      setIsOpen(false);
+    }
+  };
+
+  const toggleCollapse = () => {
+    setCollapsed(!collapsed);
+    if (window.innerWidth < 1024) {
+      setIsOpen(!isOpen);
+    }
+  };
+
+  return (
+    <>
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -104,18 +155,18 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`
-          fixed lg:relative top-0 left-0 h-[92vh]
+          lg:relative h-full
           bg-blue-900
           border-r border-slate-700/50
           transition-all duration-200 ease-in-out z-50
           flex flex-col
-          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${isOpen ? 'translate-x-0 fixed top-0 left-0' : '-translate-x-full lg:translate-x-0 lg:static'}
           ${collapsed ? 'w-20 lg:w-20' : 'w-64 lg:w-72'}
         `}
       >
+        {/* Header de la sidebar avec logo comme dans sidebar.tsx */}
         <div className="flex items-center justify-between p-4 lg:p-6 border-b border-slate-700/50">
           <img 
             style={{margin:'auto'}}
@@ -137,6 +188,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
           </button>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-2">
           <div className="space-y-1">
             {menuItems.map((item) => {
@@ -176,6 +228,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
           </div>
         </nav>
 
+        {/* Section inférieure de la sidebar */}
         <div className="border-t border-slate-700/50 p-2 space-y-1">
           <button
             className={`
@@ -189,12 +242,14 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
             <div className="relative">
               <Bell className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] font-bold flex items-center justify-center text-white">
-                5
+                3
               </span>
             </div>
+            
             {!collapsed && (
               <span className="text-sm font-medium">Notifications</span>
             )}
+            
             {collapsed && (
               <div className="absolute left-full ml-2 px-2 py-1 bg-slate-900 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
                 Notifications
@@ -203,7 +258,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
           </button>
 
           <button
-            onClick={() => setShowLogoutModal(true)}
+            onClick={onLogoutClick}
             className={`
               w-full flex items-center gap-3 px-3 py-3 rounded-lg
               text-slate-400 hover:text-red-400 hover:bg-red-500/10
@@ -213,9 +268,11 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
             title={collapsed ? 'Déconnexion' : ''}
           >
             <LogOut className="w-5 h-5" />
+            
             {!collapsed && (
               <span className="text-sm font-medium">Déconnexion</span>
             )}
+            
             {collapsed && (
               <div className="absolute left-full ml-2 px-2 py-1 bg-slate-900 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
                 Déconnexion
@@ -225,6 +282,7 @@ export default function Sidebar({ activeSection, setActiveSection, collapsed, se
         </div>
       </aside>
 
+      {/* Bouton pour ouvrir la sidebar sur mobile */}
       <button
         onClick={() => setIsOpen(true)}
         className="lg:hidden fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-br from-blue-500 to-violet-600 rounded-full shadow-lg flex items-center justify-center text-white z-30"

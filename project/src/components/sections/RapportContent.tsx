@@ -1407,9 +1407,7 @@ export default function FormulaireDescente({
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Recherchez un fokontany ou entrez des coordonnées ci-dessous pour le détecter automatiquement
-              </p>
+  
             </div>
           </div>
           {/* Coordonnées Lambert Madagascar */}
@@ -1440,9 +1438,7 @@ export default function FormulaireDescente({
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Coordonnée Lambert Madagascar (mètres). Le fokontany sera automatiquement détecté.
-              </p>
+
             </div>
            
             <div>
@@ -1471,9 +1467,7 @@ export default function FormulaireDescente({
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Coordonnée Lambert Madagascar (mètres). Le fokontany sera automatiquement détecté.
-              </p>
+
             </div>
           </div>
           {/* District, Commune, Fokontany (auto-détectés) */}
@@ -1508,7 +1502,7 @@ export default function FormulaireDescente({
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 {formData.district && formData.x_coord && formData.y_coord
-                  ? 'Auto-détecté à partir des coordonnées'
+                  ? ''
                   : 'Auto-rempli'}
               </p>
             </div>
@@ -1542,7 +1536,7 @@ export default function FormulaireDescente({
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 {formData.commune && formData.x_coord && formData.y_coord
-                  ? 'Auto-détectée à partir des coordonnées'
+                  ? ''
                   : 'Auto-remplie'}
               </p>
             </div>
@@ -1580,7 +1574,7 @@ export default function FormulaireDescente({
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 {formData.fokontany && formData.x_coord && formData.y_coord
-                  ? 'Auto-détecté à partir des coordonnées'
+                  ? ''
                   : 'Sélectionnez ou entrez des coordonnées'}
               </p>
             </div>
@@ -1620,29 +1614,11 @@ export default function FormulaireDescente({
                 placeholder="Description de la localisation (remplie automatiquement par OSM)"
                 rows={3}
               />
-              <button
-                type="button"
-                onClick={handleGeocodeLocation}
-                disabled={!formData.x_coord || !formData.y_coord || reverseGeocoding}
-                className={`px-4 py-2 h-fit rounded-lg transition flex items-center gap-2 whitespace-nowrap ${
-                  !formData.x_coord || !formData.y_coord || reverseGeocoding
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                }`}
-              >
-                <Navigation className="w-4 h-4" />
-                {reverseGeocoding ? 'Recherche...' : 'Chercher adresse'}
-              </button>
+             
             </div>
-            <p className="text-xs text-slate-500">
-              L'adresse est automatiquement détectée à partir des coordonnées via OpenStreetMap.
-              Cliquez sur "Chercher adresse" pour mettre à jour manuellement.
-            </p>
           </div>
           <div className="mt-6">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              📍 Carte interactive - Tracez un polygone
-            </label>
+
             <div className="flex flex-wrap gap-2 mb-4">
               <button
                 type="button"
@@ -1657,7 +1633,7 @@ export default function FormulaireDescente({
                 onClick={updateMapFromCoordinates}
                 className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition flex items-center gap-2 shadow-sm"
               >
-                📍 Centrer sur coordonnées
+                 Centrer sur coordonnées
               </button>
               {coordMarker && (
                 <button
@@ -1710,9 +1686,7 @@ export default function FormulaireDescente({
                     <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                     <span className="text-yellow-700 font-medium">⚠️ Aucun polygone tracé</span>
                   </div>
-                  <p className="text-sm text-yellow-600 mt-1">
-                    Veuillez utiliser l'outil polygone pour tracer votre zone sur la carte.
-                  </p>
+
                 </div>
               )}
              
@@ -1722,10 +1696,6 @@ export default function FormulaireDescente({
                     <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
                     <span className="text-emerald-700 font-medium">📍 Point de référence actif</span>
                   </div>
-                  <p className="text-sm text-emerald-600">
-                    Vous pouvez glisser le point vert sur la carte pour ajuster les coordonnées.
-                    Les informations seront automatiquement mises à jour.
-                  </p>
                 </div>
               )}
              

@@ -2154,7 +2154,7 @@ export default function CartographieContent() {
       <div className="flex-1 flex overflow-hidden">
         {/* Carte */}
         <div className={`flex-grow transition-all duration-300 ${showLayersPanel || showListPanel ? 'lg:pr-1/4' : 'pr-0'}`}>
-          <div className="bg-white rounded-lg h-full overflow-hidden relative" style={{ right: 0 }}>
+          <div className="bg-white h-full overflow-hidden relative" style={{ right: 0 }}>
             {loading ? (
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center">

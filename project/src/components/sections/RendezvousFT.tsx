@@ -1015,13 +1015,7 @@ function RendezvousFT() {
         </div>
         
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => window.location.href = '/rendezvous/nouveau'}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all font-medium"
-          >
-            <Plus className="w-5 h-5" />
-            Nouveau rendez-vous
-          </button>
+       
           
           <button 
             onClick={checkAndUpdateStatus}

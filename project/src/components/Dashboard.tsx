@@ -67,7 +67,7 @@ export default function Dashboard() {
       
       {/* Contenu principal avec défilement conditionnel */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <div className={`flex-1 ${isCartographie ? 'overflow-hidden' : 'overflow-auto p-4 lg:p-8'}`}>
+        <div className={`flex-1 ${isCartographie ? 'overflow-hidden' : 'overflow-auto p-1 lg:p-5'}`}>
           {renderContent()}
         </div>
       </div>
