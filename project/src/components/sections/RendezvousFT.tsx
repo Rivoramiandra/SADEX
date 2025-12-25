@@ -44,11 +44,43 @@ interface FtData {
   status: string;
 }
 
+// Fonction pour formater la date
+const formatDate = (dateString?: string) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+// Fonction pour convertir une image en Base64
+const getImageAsBase64 = async (imagePath: string): Promise<string> => {
+  try {
+    const response = await fetch(imagePath);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error(`Erreur de chargement de l'image ${imagePath}:`, error);
+    return '';
+  }
+};
+
 // Interface pour le modal de mise en demeure
 interface MiseEnDemeureModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (newDate: string, newTime: string) => void;
+  onConfirm: (newDate: string, newTime: string) => Promise<void>;
   rendezvous: Rendezvous | null;
 }
 
@@ -64,6 +96,303 @@ interface ConfirmationModalProps {
   type?: 'danger' | 'warning' | 'info' | 'success';
 }
 
+// Fonction pour générer le PDF de mise en demeure
+const generateMiseEnDemeurePDF = async (rdv: Rendezvous, nouvelleDate?: string, nouvelleHeure?: string) => {
+  try {
+    // Charger jsPDF dynamiquement
+    const jsPDF = (await import('jspdf')).default;
+    
+    // Attendre que html2canvas soit disponible globalement
+    let html2canvas;
+    if (typeof window !== 'undefined') {
+      html2canvas = await import('html2canvas');
+    } else {
+      throw new Error('html2canvas non disponible');
+    }
+
+    // Charger les images en Base64
+    const [headerImage, emblemImage, footerImage] = await Promise.all([
+      getImageAsBase64('/images/header_vm.png'),
+      getImageAsBase64('/images/emblème_vf.png'),
+      getImageAsBase64('/images/footer.png')
+    ]);
+    
+    // Créer un élément div temporaire pour le rendu HTML
+    const pdfContent = document.createElement('div');
+    pdfContent.style.position = 'fixed';
+    pdfContent.style.left = '-9999px';
+    pdfContent.style.top = '0';
+    pdfContent.style.width = '210mm';
+    pdfContent.style.backgroundColor = 'white';
+    pdfContent.style.boxSizing = 'border-box';
+    pdfContent.style.overflow = 'hidden';
+    
+    // Créer un conteneur pour la page unique
+    const page1 = document.createElement('div');
+    page1.className = 'pdf-page pdf-page-1';
+    page1.style.width = '210mm';
+    page1.style.height = '297mm';
+    page1.style.backgroundColor = 'white';
+    page1.style.position = 'relative';
+    page1.style.margin = '0';
+    page1.style.padding = '0';
+    page1.style.boxSizing = 'border-box';
+    
+    // Préparer les informations
+    const dateMiseEnDemeure = nouvelleDate ? formatDate(nouvelleDate) : formatDate(new Date().toISOString());
+    const heureRendezVous = nouvelleHeure || rdv.heure_rendez_vous || '09:00';
+    
+    // Appliquer les styles directement
+    const styles = `
+      @media print {
+        @page { margin: 0; size: A4; }
+        body { margin: 0; }
+        .pdf-page { 
+          width: 210mm; 
+          height: 297mm;
+        }
+      }
+      
+      .pdf-header {
+        height: 200px;
+        width: 100%;
+        background-image: url('${headerImage}');
+        background-size: cover;
+        background-repeat: no-repeat;
+        margin-bottom: 20px;
+      }
+      
+      .pdf-emblem {
+        height: 100px;
+        width: 90%;
+        position: relative;
+        top: -160px;
+        background-image: url('${emblemImage}');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center center;
+        margin: 0 auto;
+      }
+      
+      .pdf-footer {
+        height: 250px;
+        background-image: url('${footerImage}');
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-color: transparent;
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+      }
+      
+      .pdf-content {
+        font-family: 'Times New Roman', serif;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #000;
+      }
+      
+      .pdf-table {
+        width: 100%;
+        border-collapse: collapse;
+
+        position: relative;
+        top: -140px;
+      }
+      
+      .pdf-table td {
+        vertical-align: top;
+        padding: 2px;
+      }
+      
+      .text-center { text-align: center; }
+      .text-right { text-align: right; }
+      .text-left { text-align: left; }
+      
+      .document-title {
+        font-size: 13px;
+        font-weight: bold;
+        margin: 8mm 0;
+        text-decoration: underline;
+         position: relative;
+        top: -120px;
+      }
+      
+      .content-block {
+        margin-bottom: 4mm;
+        padding: 20px 50px;
+        position: relative;
+        top: -120px;
+      }
+      
+      .signature-section {
+        padding: 20 20px;
+        position: relative;
+        top: -140px;
+        width: 90%;
+      }
+      
+      .content-text {
+        text-align: justify;
+        margin-bottom: 10px;
+      }
+      
+      ol {
+        padding-left: 20px;
+        margin: 10px 0;
+      }
+      
+      ol li {
+        margin-bottom: 5px;
+      }
+    `;
+    
+    // Contenu de la page 1 (Mise en demeure pour non-comparution)
+    page1.innerHTML = `
+      <style>${styles}</style>
+      <div class="pdf-header"></div>
+      <div class="pdf-emblem"></div>
+      <div class="pdf-content">
+        <table class="pdf-table">
+          <tr>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+              <strong>MINISTERE DE LA DECENTRALISATION<br>ET L'AMENAAGEMENT DU TERRITOIRE<br>
+              --------------------<br>
+              SECRETAIRE GENERAL<br>
+              --------------------<br>
+              <em>DIRECTION GENERALE</em><br>
+              <em>DE L'AUTORITE POUR LA PROTECTION CONTRE LES INONDATIONS</em><br>
+              <em>DE LA PLAINE D'ANTANANARIVO</em><br>
+              --------------------</strong>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+              Antananarivo, le ${dateMiseEnDemeure}<br><br>
+              Le Directeur Général<br><br>
+              À<br><br>
+              <strong>${rdv.nom_personne_r || 'Personne concernée'}</strong><br>
+              ${rdv.contact_r || ''}<br>
+              ${rdv.commune ? `Commune: ${rdv.commune}` : ''}
+              ${rdv.fokontany ? `, Fokontany: ${rdv.fokontany}` : ''}
+            </td>
+          </tr>
+        </table>
+
+        <div class="document-title text-center">
+          CONVOCATION POUR NON-COMPARUTION<br>
+         
+        </div>
+        
+        <div class="content-block">
+          <p class="content-text">
+            Par lettre de convocation N° <strong>${rdv.reference || 'RDV-' + rdv.id}</strong> en date du <strong>${formatDate(rdv.date_rendez_vous)}</strong>, vous avez été convoqué(e) à comparaître le <strong>${formatDate(rdv.date_rendez_vous)}</strong> à <strong>${formatTime(rdv.heure_rendez_vous)}</strong> au bureau de l'Autorité pour la Protection contre les Inondations de la Plaine d'Antananarivo (APIPA).
+          </p>
+          
+          <p class="content-text">
+            Nous constatons qu'à ce jour, vous n'avez pas donné suite à cette convocation, ni fourni les justificatifs requis concernant le dossier relatif à l'infraction constatée lors de la descente du <strong>${formatDate(rdv.date_descente)}</strong>.
+          </p>
+          
+          
+          <p class="content-text">
+            <strong>Par la présente mise en demeure, nous vous enjoignons de :</strong>
+          </p>
+          
+          <ol>
+            <li>Vous présenter au bureau de l'APIPA dans un délai maximum de <strong>huit (8) jours</strong> à compter de la réception de la présente ;</li>
+            <li>Fournir l'ensemble des documents justificatifs concernant l'infraction constatée ;</li>
+            <li>Régulariser votre situation au regard des infractions constatées.</li>
+          </ol>
+          
+          ${nouvelleDate ? `
+          <p class="content-text">
+            <strong>Une nouvelle date de rendez-vous a été fixée :</strong><br>
+            Date : <strong>${formatDate(nouvelleDate)}</strong><br>
+            Heure : <strong>${heureRendezVous.substring(0, 5)}</strong><br>
+            Vous êtes prié(e) de vous présenter à cette nouvelle date.
+          </p>
+          ` : ''}
+          
+          <p class="content-text">
+            <strong>A défaut de vous conformer à cette mise en demeure dans le délai imparti, des poursuites administratives et/ou judiciaires pourront être engagées à votre encontre, conformément à la réglementation en vigueur.</strong>
+          </p>
+          
+          <p class="content-text">
+            Nous restons à votre disposition pour toute information complémentaire.
+          </p>
+           <p class="content-text">
+             PV N°<u>MD-${rdv.reference || 'RDV-' + rdv.id}</u>
+          </p>
+          
+         
+        </div>
+
+        <table class="signature-section">
+          <tr>
+
+            <td style="width: 60%;"></td>
+            <td style="width: 40%; text-align: right;">
+              <em>Le Directeur Général,</em><br><br><br><br>
+              <strong>_________________________</strong><br>
+              <em>Signature et cachet</em>
+            </td>
+          </tr>
+        </table>
+        <div class="pdf-footer"></div>
+      </div>
+    `;
+    
+    // Ajouter la page au conteneur principal
+    pdfContent.appendChild(page1);
+    
+    // Ajouter le div au body pour le rendu
+    document.body.appendChild(pdfContent);
+    
+    // Attendre le rendu complet (images chargées)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Créer le PDF avec jsPDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    
+    // Capturer et ajouter la page
+    const canvas1 = await html2canvas.default(page1, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      width: 793,
+      height: 1122,
+      windowWidth: 793,
+      windowHeight: 1122
+    });
+    
+    const imgData1 = canvas1.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    
+    // Télécharger le PDF
+    const fileName = `Mise_en_Demeure_RDV_${rdv.id}_${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(fileName);
+    
+    // Nettoyer le div temporaire
+    if (pdfContent.parentNode) {
+      pdfContent.parentNode.removeChild(pdfContent);
+    }
+    
+    return true;
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    throw new Error('Erreur lors de la génération du PDF');
+  }
+};
+
 // Composant Modal de Mise en Demeure
 function MiseEnDemeureModal({ 
   isOpen, 
@@ -74,6 +403,7 @@ function MiseEnDemeureModal({
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('09:00');
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     if (rendezvous && isOpen) {
@@ -87,14 +417,53 @@ function MiseEnDemeureModal({
 
   if (!isOpen || !rendezvous) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!newDate || !newTime) {
       toast.error('Veuillez renseigner une date et une heure');
       return;
     }
 
     setLoading(true);
-    onConfirm(newDate, newTime);
+    setPdfLoading(true);
+    
+    try {
+      // 1. Générer le PDF de mise en demeure
+      await generateMiseEnDemeurePDF(rendezvous, newDate, newTime);
+      
+      // 2. Envoyer la mise en demeure via l'API
+      await onConfirm(newDate, newTime);
+      
+      // 3. Fermer le modal
+      onClose();
+      
+      toast.success('Mise en demeure générée et envoyée avec succès !');
+      
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'envoi de la mise en demeure');
+    } finally {
+      setLoading(false);
+      setPdfLoading(false);
+    }
+  };
+
+  const handleGeneratePDFOnly = async () => {
+    if (!newDate || !newTime) {
+      toast.error('Veuillez renseigner une date et une heure');
+      return;
+    }
+
+    setPdfLoading(true);
+    
+    try {
+      await generateMiseEnDemeurePDF(rendezvous, newDate, newTime);
+      toast.success('PDF de mise en demeure généré avec succès !');
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Erreur lors de la génération du PDF');
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   return (
@@ -107,7 +476,9 @@ function MiseEnDemeureModal({
             <Mail className="w-6 h-6 text-red-600" />
             <div>
               <h3 className="text-xl font-bold text-slate-900">Envoyer une mise en demeure</h3>
-              <p className="text-sm text-slate-600 mt-1">Rendez-vous RDV-{rendezvous.id}</p>
+              <p className="text-sm text-slate-600 mt-1">
+                Rendez-vous RDV-{rendezvous.id} • DS-{rendezvous.iddescente}
+              </p>
             </div>
           </div>
         </div>
@@ -122,6 +493,10 @@ function MiseEnDemeureModal({
                 <span className="font-medium">{rendezvous.nom_personne_r || 'Non spécifié'}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-slate-600">Contact:</span>
+                <span className="font-medium">{rendezvous.contact_r || 'Non spécifié'}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-slate-600">Date prévue:</span>
                 <span className="font-medium">{formatDate(rendezvous.date_rendez_vous)}</span>
               </div>
@@ -129,7 +504,13 @@ function MiseEnDemeureModal({
                 <span className="text-slate-600">Heure prévue:</span>
                 <span className="font-medium">{formatTime(rendezvous.heure_rendez_vous)}</span>
               </div>
-             
+              <div className="flex justify-between">
+                <span className="text-slate-600">Localisation:</span>
+                <span className="font-medium">
+                  {rendezvous.commune || ''} 
+                  {rendezvous.fokontany ? `, ${rendezvous.fokontany}` : ''}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -175,31 +556,53 @@ function MiseEnDemeureModal({
           
 
           {/* Boutons d'action */}
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-              disabled={loading}
-            >
-              Annuler
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading || !newDate || !newTime}
-              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Envoi en cours...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  Envoyer la mise en demeure
-                </>
-              )}
-            </button>
+          <div className="flex justify-between gap-3 pt-4 border-t">
+            <div className="flex gap-3">
+              <button
+                onClick={handleGeneratePDFOnly}
+                disabled={pdfLoading || !newDate || !newTime}
+                className="flex items-center gap-2 px-4 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {pdfLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    Génération...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    Générer PDF seulement
+                  </>
+                )}
+              </button>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                disabled={loading || pdfLoading}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={loading || pdfLoading || !newDate || !newTime}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading || pdfLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Génération et envoi...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Générer et Envoyer
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -330,21 +733,7 @@ const formatRendezvousTitle = (title?: string, iddescente?: number) => {
   return cleanedTitle || `Rendez-vous DS-${iddescente || 'N/A'}`;
 };
 
-// Fonctions utilitaires pour le formatage
-const formatDate = (dateString?: string) => {
-  if (!dateString) return 'N/A';
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  } catch {
-    return dateString;
-  }
-};
-
+// Fonction utilitaire pour le formatage du temps
 const formatTime = (timeString?: string) => {
   if (!timeString) return '';
   return timeString.substring(0, 5);
@@ -610,12 +999,18 @@ function RendezvousFT() {
     });
   };
 
-  // Fonction pour envoyer la mise en demeure
+  // Fonction pour envoyer la mise en demeure (inclut la génération du PDF)
   const handleSendMiseEnDemeure = async (id: number, newDate: string, newTime: string) => {
     try {
       console.log('📤 Envoi de la mise en demeure pour le rendez-vous:', id);
       console.log('📅 Nouvelle date:', newDate);
       console.log('⏰ Nouvelle heure:', newTime);
+
+      // Trouver le rendez-vous dans l'état local
+      const rdv = rendezvous.find(r => r.id === id);
+      if (!rdv) {
+        throw new Error('Rendez-vous non trouvé');
+      }
 
       // Construire les données à envoyer
       const mandatData = {
@@ -641,15 +1036,14 @@ function RendezvousFT() {
       const result = await response.json();
       console.log('✅ Mise en demeure envoyée:', result);
 
-      // Fermer le modal et actualiser les données
-      setMiseEnDemeureModal({ isOpen: false, rendezvous: null });
+      // Actualiser les données
       fetchRendezvous();
       
-      toast.success('Mise en demeure envoyée avec succès. Le statut est maintenant "En cours".');
+      return result;
 
     } catch (err) {
       console.error('Erreur lors de l\'envoi de la mise en demeure:', err);
-      toast.error(err instanceof Error ? err.message : 'Erreur lors de l\'envoi de la mise en demeure');
+      throw err;
     }
   };
 
@@ -983,13 +1377,13 @@ function RendezvousFT() {
         cancelText="Annuler"
       />
 
-      {/* Modal de mise en demeure */}
+      {/* Modal de mise en demeure (avec génération de PDF) */}
       <MiseEnDemeureModal
         isOpen={miseEnDemeureModal.isOpen}
         onClose={() => setMiseEnDemeureModal({ isOpen: false, rendezvous: null })}
-        onConfirm={(newDate, newTime) => {
+        onConfirm={async (newDate, newTime) => {
           if (miseEnDemeureModal.rendezvous) {
-            handleSendMiseEnDemeure(miseEnDemeureModal.rendezvous.id, newDate, newTime);
+            await handleSendMiseEnDemeure(miseEnDemeureModal.rendezvous.id, newDate, newTime);
           }
         }}
         rendezvous={miseEnDemeureModal.rendezvous}
@@ -1237,12 +1631,12 @@ function RendezvousFT() {
                         
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
-                            {/* Bouton Mise en demeure pour les statuts "Non-comparution" */}
+                            {/* Bouton Mise en demeure (modal) pour les statuts "Non-comparution" */}
                             {normalizeStatus(rdv.statut) === 'non-comparution' && (
                               <button
                                 onClick={() => openMiseEnDemeureModal(rdv)}
                                 className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                                title="Envoyer mise en demeure"
+                                title="Générer et envoyer mise en demeure"
                               >
                                 <Mail className="w-4 h-4" />
                               </button>
@@ -1372,7 +1766,7 @@ function RendezvousFT() {
               </p>
               <p className="flex items-center gap-1">
                 <Mail className="w-4 h-4 text-red-500" />
-                <span>Mise en demeure : "Non-comparution" → "En cours" après envoi</span>
+                <span>Le bouton "Mise en demeure" génère automatiquement un PDF et envoie la convocation</span>
               </p>
               <p className="flex items-center gap-1">
                 <RefreshCw className="w-4 h-4 text-green-500" />

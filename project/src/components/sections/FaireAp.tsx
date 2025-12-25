@@ -9,17 +9,18 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { toast } from 'react-hot-toast';
 
 // ==================== ALGORITHMES DE CALCUL ====================
 
-// Interfaces pour les algorithmes de calcul
 export interface CalculResult {
   redevance: number;
   amende: number;
   calcul_redevance: boolean;
 }
 
-// Fonction pour mapper la destination vers le type d'attraction
 export const mapDestinationToAttraction = (destination: string): 'H' | 'I' | 'C' => {
   switch (destination) {
     case 'HABITATION':
@@ -33,7 +34,6 @@ export const mapDestinationToAttraction = (destination: string): 'H' | 'I' | 'C'
   }
 };
 
-// Algorithme principal de calcul des taxes et amendes
 export const calculerTaxesComplet = (
   zone_type: 'constructible' | 'inconstructible',
   type_attraction: 'H' | 'I' | 'C',
@@ -122,7 +122,6 @@ export const getTypePaiementSelonZone = (zone_type: 'constructible' | 'inconstru
   return zone_type === 'inconstructible' ? 'amende' : 'total';
 };
 
-// Fonction pour formater les nombres avec espaces
 export const formatNumber = (num: string | number): string => {
   if (!num) return '0';
   const numValue = typeof num === 'string' ? parseFloat(num) : num;
@@ -130,7 +129,6 @@ export const formatNumber = (num: string | number): string => {
   return new Intl.NumberFormat('fr-FR').format(numValue);
 };
 
-// Fonction pour convertir le montant en lettres
 export const convertToLetters = (amount: number): string => {
   const units = ['', 'UN', 'DEUX', 'TROIS', 'QUATRE', 'CINQ', 'SIX', 'SEPT', 'HUIT', 'NEUF'];
   const teens = ['DIX', 'ONZE', 'DOUZE', 'TREIZE', 'QUATORZE', 'QUINZE', 'SEIZE', 'DIX-SEPT', 'DIX-HUIT', 'DIX-NEUF'];
@@ -189,11 +187,9 @@ export const convertToLetters = (amount: number): string => {
 
 // ==================== SYSTEMES DE COORDONNEES ====================
 
-// Définition des systèmes de coordonnées
 const lambertMadagascar = '+proj=lcc +lat_1=-18.9 +lat_2=-18.9 +lat_0=-18.9 +lon_0=46.43722916666667 +x_0=400000 +y_0=800000 +ellps=intl +towgs84=-189,-242,-91,0,0,0,0 +units=m +no_defs';
 const wgs84 = '+proj=longlat +datum=WGS84 +no_defs';
 
-// Fonction de conversion Lambert Madagascar vers WGS84
 const convertLambertToWGS84 = (x: number, y: number): { lat: number, lng: number } => {
   try {
     const result = proj4(lambertMadagascar, wgs84, [x, y]);
@@ -277,6 +273,55 @@ interface FaireApProps {
   onSuccess?: () => void;
 }
 
+// ==================== FONCTIONS UTILITAIRES POUR PDF ====================
+
+const getImageAsBase64 = async (imagePath: string): Promise<string> => {
+  try {
+    const fullUrl = imagePath.startsWith('http') 
+      ? imagePath 
+      : `${window.location.origin}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
+    
+    const response = await fetch(fullUrl);
+    
+    if (!response.ok) {
+      console.warn(`Image non trouvée: ${imagePath}, utilisation d'une image par défaut`);
+      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idHJhbnNwYXJlbnQiLz48L3N2Zz4=';
+    }
+    
+    const blob = await response.blob();
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Impossible de convertir l\'image en Base64'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Erreur de lecture du fichier'));
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error(`Erreur lors du chargement de l'image ${imagePath}:`, error);
+    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idHJhbnNwYXJlbnQiLz48L3N2Zz4=';
+  }
+};
+
+const formatDate = (dateString: string): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch {
+    return dateString;
+  }
+};
+
 // ==================== COMPOSANT PRINCIPAL ====================
 
 const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
@@ -293,22 +338,19 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     formulaire: true
   });
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
   
-  // Références pour la carte
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<L.Marker | null>(null);
 
-  // État pour les calculs
   const [calculDetails, setCalculDetails] = useState({
     redevance: 0,
     amende: 0,
     total: 0
   });
 
-  // Formulaire mis à jour avec calcul automatique
   const [formData, setFormData] = useState({
-    // Champs qui seront sauvegardés (correspondent à la table)
     iddescente: ft?.iddescente || 0,
     idft: ft?.id || 0,
     num_ap: `AP-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
@@ -322,7 +364,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     fin_premier_paiement: '',
     contact: ft?.contact || '',
     
-    // Champs utilisés uniquement pour le calcul (ne seront PAS sauvegardés)
     zone_type: 'constructible' as 'constructible' | 'inconstructible',
     type_payment: 'total' as 'amende' | 'redevance' | 'total',
     valeur_unitaire: '',
@@ -332,7 +373,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
 
   // ==================== FONCTIONS UTILITAIRES ====================
 
-  // Fonction pour nettoyer les chaînes JSON
   const cleanJsonString = (str: any): string => {
     if (str === null || str === undefined) {
       return '';
@@ -366,7 +406,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     return cleanStr;
   };
 
-  // Fonction pour extraire le texte de l'infraction
   const extractInfractionText = (infraction: any): string => {
     if (!infraction) return '';
     
@@ -376,13 +415,10 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     
     if (typeof infraction === 'object') {
       try {
-        // Si c'est un objet JSON, essayer d'extraire le texte
         if (infraction.description) return String(infraction.description);
         if (infraction.text) return String(infraction.text);
         if (infraction.message) return String(infraction.message);
         if (infraction.infraction) return String(infraction.infraction);
-        
-        // Sinon, convertir l'objet en chaîne
         return JSON.stringify(infraction);
       } catch {
         return 'Infraction non textuelle';
@@ -392,7 +428,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     return String(infraction);
   };
 
-  // Fonction pour déterminer automatiquement la zone constructible/inconstructible
   const determineZoneConstructible = (infraction?: any): 'constructible' | 'inconstructible' => {
     if (!infraction) return 'constructible';
     
@@ -407,7 +442,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     return 'constructible';
   };
 
-  // Fonction pour calculer les valeurs automatiquement
   const calculerValeurs = () => {
     const superficie = parseFloat(formData.superficie_remblai) || 0;
     const zoneGeographique = formData.zone_geo;
@@ -456,7 +490,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
       montantTotal = superficie * calcul.amende;
     }
     
-    // Mettre à jour le formulaire avec les valeurs calculées
     setFormData(prev => ({
       ...prev,
       valeur_unitaire: valeurUnitaire.toFixed(0),
@@ -466,17 +499,394 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }));
   };
 
+  // ==================== FONCTION GENERATEPDF COMPLETE ====================
+
+// ==================== FONCTION GENERATEPDF CORRIGEE ====================
+
+// Fonction pour générer et télécharger le PDF
+const generatePDF = async () => {
+  // Déclarer pdfContent en dehors du bloc try pour qu'il soit accessible dans le finally
+  let pdfContent: HTMLDivElement | null = null;
+  
+  if (!descenteData) {
+    toast.error('Veuillez d\'abord charger les données de la descente');
+    return;
+  }
+  
+  const prepareFTDataForPDF = () => {
+    if (!selectedFt || !descenteData) return null;
+    
+    return {
+      referenceFT: selectedFt.reference_ft,
+      currentDate: formatDate(new Date().toISOString()),
+      dateDescente: formatDate(descenteData.date_descente || ''),
+      heureDescente: descenteData.heure_descente || '',
+      commune: descenteData.commune || '',
+      fokontany: descenteData.fokontany || '',
+      localite: descenteData.localisation || '',
+      titreTerrain: selectedFt.titre_terrain || '',
+      nomproprietaire: selectedFt.nom_proprietaire || '',
+      coordX: descenteData.x_coord || '',
+      coordY: descenteData.y_coord || '',
+      superficie: descenteData.superficie || '',
+      infraction: extractInfractionText(descenteData.infraction),
+      action: descenteData.actions || '',
+      formattedDateFT: formatDate(selectedFt.date_ft),
+      formattedHeureFT: selectedFt.heure_ft ? selectedFt.heure_ft.substring(0, 5) : '',
+      typeConvoquee: selectedFt.type_convoquee || '',
+      nomComplet: selectedFt.nom_convoquee || '',
+      cin: selectedFt.cin || '',
+      contact: selectedFt.contact || '',
+      dossierType: selectedFt.dossier ? [selectedFt.dossier] : [],
+      missingDossiers: selectedFt.dossier_a_fournir ? [selectedFt.dossier_a_fournir] : [],
+      deadline: selectedFt.date_deadlinedossier || '',
+      mesure: selectedFt.conclusion || ''
+    };
+  };
+  
+  const preparedData = prepareFTDataForPDF();
+  if (!preparedData) {
+    toast.error('Impossible de préparer les données pour le PDF');
+    return;
+  }
+  
+  try {
+    setGeneratingPDF(true);
+    // Charger toutes les images en Base64
+    const [headerImage, emblemImage, footerImage] = await Promise.all([
+      getImageAsBase64('/images/header_vm.png'),
+      getImageAsBase64('/images/emblème_vf.png'),
+      getImageAsBase64('/images/footer.png')
+    ]);
+    
+    // Créer un élément div temporaire pour le rendu HTML avec DEUX pages séparées
+    pdfContent = document.createElement('div');
+    pdfContent.style.position = 'fixed';
+    pdfContent.style.left = '-9999px';
+    pdfContent.style.top = '0';
+    pdfContent.style.width = '210mm';
+    pdfContent.style.backgroundColor = 'white';
+    pdfContent.style.boxSizing = 'border-box';
+    pdfContent.style.overflow = 'hidden';
+    
+    // Créer un conteneur pour chaque page séparément
+    const page1 = document.createElement('div');
+    page1.className = 'pdf-page pdf-page-1';
+    page1.style.width = '210mm';
+    page1.style.height = '297mm';
+    page1.style.pageBreakAfter = 'always';
+    page1.style.backgroundColor = 'white';
+    page1.style.position = 'relative';
+    page1.style.margin = '0';
+    page1.style.padding = '0';
+    page1.style.boxSizing = 'border-box';
+    
+    const page2 = document.createElement('div');
+    page2.className = 'pdf-page pdf-page-2';
+    page2.style.width = '210mm';
+    page2.style.height = '297mm';
+    page2.style.pageBreakAfter = 'always';
+    page2.style.backgroundColor = 'white';
+    page2.style.position = 'relative';
+    page2.style.margin = '0';
+    page2.style.padding = '0';
+    page2.style.boxSizing = 'border-box';
+    
+    // Appliquer les styles directement
+    const styles = `
+      @media print {
+        @page { margin: 0; size: A4; }
+        body { margin: 0; }
+        .pdf-page { 
+          width: 210mm; 
+          height: 297mm; 
+          page-break-after: always;
+        }
+      }
+      
+      .pdf-header {
+        height: 180px;
+        width: 100%;
+        background-image: url('${headerImage}');
+        background-size: cover;
+        background-repeat: no-repeat;
+        margin-bottom: 20px;
+      }
+      
+      .pdf-emblem {
+        height: 90px;
+        width: 90%;
+        position: relative;
+        top: -100px;
+        background-image: url('${emblemImage}');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center center;
+        margin: 0 auto;
+      }
+      
+      .pdf-footer {
+        height: 250px;
+        background-image: url('${footerImage}');
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-color: transparent;
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+      }
+      
+      .pdf-content {
+        font-family: 'Times New Roman', serif;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #000;
+      }
+      
+      .pdf-table {
+        width: 100%;
+        border-collapse: collapse;
+        position:relative;
+        top:-50px;
+      }
+      
+      .pdf-table td {
+        vertical-align: top;
+        padding: 2px;
+      }
+      
+      .info-table {
+        border: 1px solid black;
+        margin: 5mm 0;
+      }
+      
+      .info-table td, .info-table th {
+        border: 1px solid black;
+        padding: 3px;
+        text-align: center;
+      }
+      
+      .text-center { text-align: center; }
+      .text-right { text-align: right; }
+      .text-left { text-align: left; }
+      
+      .document-title {
+        font-size: 14px;
+        font-weight: bold;
+        text-decoration: underline;
+
+      }
+      
+      .content-block1 {
+        margin-bottom: 4mm;
+        padding: 50px;
+  
+      }
+      
+      .content-block2 {
+        padding: 50px;
+      }
+      
+      .signature-section {
+        margin-top: 15mm;
+        position: relative;
+        bottom: 70px;
+      }
+    `;
+    
+    // Contenu de la page 1
+    page1.innerHTML = `
+      <style>${styles}</style>
+      <div class="pdf-header"></div>
+      <div class="pdf-emblem"></div>
+      <div class="pdf-content">
+        <table class="pdf-table">
+          <tr>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+              <strong>Ministeran'ny Fitsinjiram-pahefana<br>sy ny Fanajariana ny Tany<br>
+              --------------------<br>
+              Sekretera Jeneraly<br>
+              --------------------<br>
+              <em>Fitaleavana Ankapobeny</em><br>
+              <em>Fahefana misahana ny fiarovana ny</em><br>
+              <em>Lemak'Antananarivo amin'ny tondra-drano</em><br>
+              --------------------</strong>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+              Antananarivo, le ${formatDate(formData.date_ap)}<br><br>
+              Le Directeur Général<br><br>
+              À<br><br>
+              <strong>${selectedFt.nom_convoquee}</strong>
+            </td>
+          </tr>
+        </table>
+
+        <div class="document-title text-center">
+          Avis de Paiement n°<u>${formData.num_ap.replace('AP-', '')}</u>
+        </div>
+        
+        <div class="content-block1">
+          <p>En application des dispositions du <em>décret n°2019-1543 du 11 septembre 2019 portant régulation de l'exécution des travaux de remblaiement dans les zones d'intervention de l'APIPA, en application de la loi n°2015-052 du 03 février 2016 relative à l'Urbanisme et à l'Habitat</em> ;</p>
+          
+          <p>Vu le rapport de descente n°${descenteData.reference || 'DS-XXX'} en date du ${formatDate(descenteData.date_descente || '')} effectué par l'équipe composée des Polices de l'Aménagement du Territoire/Brigade Spéciale ;</p>
+          
+          <p>Vu le certificat de situation juridique de la propriété dite ${selectedFt.nom_propriete || 'NON SPECIFIE'} sise à ${descenteData.commune || ''} en date du ${formatDate(selectedFt.created_at)} ;</p>
+          
+          <p>Vu le plan officiel ;</p>
+          
+          <p>Par la présente,</p>
+          
+          <p>Nous vous informons que le montant de <strong>${formData.montant_lettre}</strong> (<strong>${formatNumber(formData.montant)} Ar</strong>), dont les détails se trouvent au verso de ce document, est dû à l'Autorité pour la Protection contre les Inondations de la Plaine d'Antananarivo (APIPA) à titre <u>d'<strong>${formData.zone_type === 'inconstructible' ? 'AMENDE' : 'AMENDE/REDEVANCE'}</strong></u> relative aux travaux de remblai et/ou de déblai illicites effectués sur votre propriété correspondant aux coordonnées « X = ${descenteData.x_coord || 'N/A'} et Y = ${descenteData.y_coord || 'N/A'}»</p>
+          
+          <p>Vous êtes contraint de procéder au règlement de ce montant dans les quinzaines (15 jours) à compter de la réception de la présente par le moyen <em>d'un chèque de banque dûment légalisé par l'établissement bancaire auquel vous êtes affilié, et adressé à l'ordre de « Monsieur l'Agent Comptable de l'Autorité pour la Protection contre les Inondations de la Plaine d'Antananarivo (APIPA) ».</em></p>
+        </div>
+
+        <table class="signature-section">
+          <tr>
+            <td style="width: 60%;"></td>
+            <td style="width: 40%; text-align: right;">
+              <em>Le Directeur Général,</em><br><br><br>
+              <strong>_________________________</strong>
+            </td>
+          </tr>
+        </table>
+        <div class="pdf-footer"></div>
+      </div>
+    `;
+    
+    // Contenu de la page 2
+    page2.innerHTML = `
+      <style>${styles}</style>
+      <div class="pdf-header"></div>
+      <div class="pdf-content">
+        <div class="content-block2">
+          <p><strong><u>INFORMATIONS FONCIERES</u> :</strong></p>
+          
+          <p><strong><u>Titre N°:</u></strong> ${selectedFt.titre_terrain || 'NON SPECIFIE'}</p>
+          
+          <p><strong><u>Coordonnées :</u></strong></p>
+          <p>X = ${descenteData.x_coord || 'N/A'}</p>
+          <p>Y = ${descenteData.y_coord || 'N/A'}</p>
+          
+          <p><strong><u>Localisation :</u></strong> ${descenteData.commune || ''}</p>
+        </div>
+        
+        <div style="padding: 50px; position: relative; top: -50px;">
+          <p><strong><u>TABLEAU PORTANT REFERENCE DE CALCUL</u> :</strong></p>
+          
+          <table class="info-table">
+            <tr>
+              <th style="width: 20%;">N° Titre</th>
+              <th style="width: 20%;">Destination</th>
+              <th style="width: 20%;">Superficie</th>
+              <th style="width: 20%;">Valeur de l'amande/redevance par unité</th>
+              <th style="width: 20%;">Montant</th>
+            </tr>
+            <tr>
+              <td>${selectedFt.titre_terrain || 'N/A'}</td>
+              <td>${formData.destination}</td>
+              <td>${formatNumber(formData.superficie_remblai)} m²</td>
+              <td>${formatNumber(formData.valeur_unitaire)} Ar</td>
+              <td>${formatNumber(formData.montant)} Ar</td>
+            </tr>
+          </table>
+          
+          <p>Le montant total à payer s'élève à ${formData.montant_lettre}.</p>
+        </div>
+        
+        <table class="signature-section" style="position: relative; top: -30px;">
+          <tr>
+            <td style="width: 50%;"></td>
+            <td style="width: 50%; text-align: right;">
+              Antananarivo, le ${formatDate(formData.date_ap)}<br><br>
+              <em>Le Directeur Général,</em><br><br><br>
+              <strong>_________________________</strong>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <div class="pdf-footer"></div>
+    `;
+    
+    // Ajouter les pages au conteneur principal
+    pdfContent.appendChild(page1);
+    pdfContent.appendChild(page2);
+    
+    // Ajouter le div au body pour le rendu
+    document.body.appendChild(pdfContent);
+    
+    // Attendre le rendu complet (images chargées)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Créer le PDF avec jsPDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    
+    // Capturer et ajouter la première page
+    const canvas1 = await html2canvas(page1, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      width: 793, // 210mm en pixels (210 * 3.78)
+      height: 1122, // 297mm en pixels (297 * 3.78)
+      windowWidth: 793,
+      windowHeight: 1122
+    });
+    
+    const imgData1 = canvas1.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    
+    // Ajouter la deuxième page
+    pdf.addPage();
+    
+    // Capturer et ajouter la deuxième page
+    const canvas2 = await html2canvas(page2, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      width: 793,
+      height: 1122,
+      windowWidth: 793,
+      windowHeight: 1122
+    });
+    
+    const imgData2 = canvas2.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData2, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    
+    // Télécharger le PDF
+    pdf.save(`Avis_Paiement_AP_${formData.num_ap}.pdf`);
+    toast.success('PDF généré et téléchargé avec succès!');
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    toast.error(`Erreur lors de la génération du PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+  } finally {
+    // Nettoyer le div temporaire
+    if (pdfContent && pdfContent.parentNode) {
+      pdfContent.parentNode.removeChild(pdfContent);
+    }
+    setGeneratingPDF(false);
+  }
+};
+
   // ==================== GESTION DE LA CARTE ====================
 
-  // Fonction pour initialiser la carte
   const initializeMap = () => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     try {
-      // Initialiser la carte
       mapRef.current = L.map(mapContainerRef.current).setView([-18.8792, 47.5079], 15);
 
-      // Ajouter les couches de base
       const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
@@ -487,16 +897,13 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         maxZoom: 19
       });
 
-      // Ajouter la couche satellite par défaut
       satellite.addTo(mapRef.current);
 
-      // Ajouter le contrôle des couches
       L.control.layers({
         "Vue standard 🗺️": osm,
         "Vue satellite 🌍": satellite
       }).addTo(mapRef.current);
 
-      // Mettre à jour la carte avec les données de descente
       updateMapWithDescenteData();
 
     } catch (error) {
@@ -504,28 +911,22 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   };
 
-  // Mettre à jour la carte avec les coordonnées de la descente
   const updateMapWithDescenteData = () => {
     if (!mapRef.current || !descenteData) return;
     
     try {
-      // Nettoyer les coordonnées
       const xCoord = descenteData.x_coord ? parseFloat(descenteData.x_coord) : null;
       const yCoord = descenteData.y_coord ? parseFloat(descenteData.y_coord) : null;
       
       if (xCoord && yCoord) {
-        // Convertir Lambert en WGS84
         const coords = convertLambertToWGS84(xCoord, yCoord);
         
-        // Retirer l'ancien marqueur s'il existe
         if (markerRef.current) {
           mapRef.current.removeLayer(markerRef.current);
         }
         
-        // Créer un marqueur à la position convertie
         markerRef.current = L.marker([coords.lat, coords.lng]);
         
-        // Ajouter un popup informatif
         markerRef.current.bindPopup(`
           <div style="font-family: Arial, sans-serif; padding: 10px;">
             <strong>📍 Localisation du terrain</strong><br/>
@@ -540,17 +941,11 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
           </div>
         `);
         
-        // Ajouter le marqueur à la carte
         markerRef.current.addTo(mapRef.current);
-        
-        // Centrer la carte sur la nouvelle position
         mapRef.current.setView([coords.lat, coords.lng], 15);
-        
-        // Ouvrir le popup
         markerRef.current.openPopup();
         
       } else {
-        // Afficher un message si pas de coordonnées
         mapRef.current.setView([-18.8792, 47.5079], 13);
         L.popup()
           .setLatLng([-18.8792, 47.5079])
@@ -563,7 +958,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   };
 
-  // Fonction pour redimensionner la carte
   const resizeMap = () => {
     if (mapRef.current) {
       setTimeout(() => {
@@ -572,7 +966,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   };
 
-  // Fonction pour centrer la carte sur la localisation
   const centerMapOnLocation = () => {
     if (descenteData && mapRef.current) {
       updateMapWithDescenteData();
@@ -581,7 +974,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
 
   // ==================== USE EFFECTS ====================
 
-  // Charger les FT complets si pas de FT fourni
   useEffect(() => {
     if (!ft) {
       fetchFTsComplets();
@@ -598,14 +990,12 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   }, [ft]);
 
-  // Charger les données de la descente quand un FT est sélectionné
   useEffect(() => {
     if (selectedFt && selectedFt.id) {
       fetchDescenteData(selectedFt.id);
     }
   }, [selectedFt]);
 
-  // Mettre à jour le formulaire quand un FT est sélectionné
   useEffect(() => {
     if (selectedFt) {
       setFormData(prev => ({
@@ -619,33 +1009,28 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   }, [selectedFt]);
 
-  // Initialiser la carte quand la section s'ouvre ou quand les données de descente sont disponibles
   useEffect(() => {
     if (descenteData && !mapRef.current && mapContainerRef.current) {
       initializeMap();
     }
     
-    // Redimensionner la carte quand elle devient visible
     if (expandedSections.carte && mapRef.current) {
       resizeMap();
     }
   }, [expandedSections.carte, descenteData]);
 
-  // Mettre à jour la carte quand les données de descente changent
   useEffect(() => {
     if (descenteData && mapRef.current) {
       updateMapWithDescenteData();
     }
   }, [descenteData]);
 
-  // Calculer automatiquement quand les paramètres changent
   useEffect(() => {
     if (formData.superficie_remblai && parseFloat(formData.superficie_remblai) > 0) {
       calculerValeurs();
     }
   }, [formData.zone_geo, formData.destination, formData.superficie_remblai, formData.zone_type, formData.type_payment]);
 
-  // Déterminer automatiquement le type de zone depuis l'infraction
   useEffect(() => {
     if (descenteData?.infraction) {
       const zoneType = determineZoneConstructible(descenteData.infraction);
@@ -656,7 +1041,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   }, [descenteData]);
 
-  // Déterminer automatiquement le type de paiement selon la zone
   useEffect(() => {
     const typePaiement = getTypePaiementSelonZone(formData.zone_type);
     setFormData(prev => ({
@@ -665,7 +1049,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }));
   }, [formData.zone_type]);
 
-  // Nettoyage de la carte
   useEffect(() => {
     return () => {
       if (mapRef.current) {
@@ -693,28 +1076,21 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
   };
 
-  // CORRECTION ICI : Utiliser la route ft/:id/with-descente
   const fetchDescenteData = async (ftId: number) => {
     try {
       setLoadingDescente(true);
       
-      // CORRECTION : Utiliser la route qui existe
-      console.log(`🔍 Chargement FT avec descente pour ID: ${ftId}`);
       const response = await fetch(`http://localhost:3000/api/ft/${ftId}/with-descente`);
       
       if (!response.ok) {
-        console.error(`❌ Erreur ${response.status}: ${response.statusText}`);
         throw new Error(`Erreur ${response.status} lors de la récupération des données`);
       }
 
       const result = await response.json();
-      console.log('✅ Résultat API:', result);
       
       if (result.success && result.data) {
-        // Les données de descente sont fusionnées avec les données FT
         const ftData = result.data;
         
-        // Extraire et formater les données de descente
         const descenteInfo: Descente = {
           id: ftData.iddescente,
           reference: `DS-${ftData.iddescente}`,
@@ -739,17 +1115,13 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         };
         
         setDescenteData(descenteInfo);
-        console.log('✅ Données descente extraites:', descenteInfo);
       } else {
-        console.error('❌ Données non disponibles:', result.message);
         throw new Error(result.message || 'Données non disponibles');
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement de la descente:', error);
       
-      // Fallback : utiliser les données minimales du FT
       if (selectedFt) {
-        console.log('✅ Utilisation des données du FT comme fallback');
         setDescenteData({
           id: selectedFt.iddescente,
           reference: `DS-${selectedFt.iddescente}`,
@@ -797,20 +1169,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
   const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
   };
 
   const formatDateTime = (dateString?: string, timeString?: string) => {
@@ -872,7 +1230,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation
     if (!selectedFt) {
       alert('Veuillez sélectionner un FT');
       return;
@@ -901,8 +1258,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     setLoading(true);
     
     try {
-      // Créer un objet avec UNIQUEMENT les champs attendus par l'API
-      // Correspond exactement aux colonnes de la table
       const avisData = {
         iddescente: formData.iddescente,
         idft: formData.idft,
@@ -916,12 +1271,8 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         montant_lettre: formData.montant_lettre,
         fin_premier_paiement: formData.fin_premier_paiement || null,
         contact: formData.contact || null
-        // Note: 'id' est géré automatiquement par la base de données (auto-increment)
       };
       
-      console.log('📤 Données envoyées à l\'API:', avisData);
-      
-      // CORRECTION : Utiliser le bon endpoint
       const response = await fetch('http://localhost:3000/api/avis-de-paiement', {
         method: 'POST',
         headers: { 
@@ -930,8 +1281,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         },
         body: JSON.stringify(avisData)
       });
-      
-      console.log('📥 Réponse HTTP:', response.status, response.statusText);
       
       if (!response.ok) {
         let errorMessage = `Erreur HTTP ${response.status}`;
@@ -946,10 +1295,13 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
       }
       
       const result = await response.json();
-      console.log('📥 Résultat de l\'API:', result);
       
       if (result.success) {
         alert('Avis de paiement créé avec succès !');
+        
+        // Générer automatiquement le PDF après l'enregistrement réussi
+        await generatePDF();
+        
         if (onSuccess) onSuccess();
         if (onClose) onClose();
       } else {
@@ -969,7 +1321,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-          {/* En-tête du modal */}
           <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex justify-between items-center z-10">
             <div>
               <h2 className="text-2xl font-bold text-slate-900">
@@ -981,6 +1332,20 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {selectedFt && descenteData && (
+                <button 
+                  className="p-2 hover:bg-slate-100 rounded-full" 
+                  title="Générer PDF" 
+                  onClick={generatePDF}
+                  disabled={generatingPDF || !formData.montant}
+                >
+                  {generatingPDF ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-slate-600"></div>
+                  ) : (
+                    <Printer className="w-5 h-5 text-slate-600" />
+                  )}
+                </button>
+              )}
               {onClose && (
                 <button
                   onClick={onClose}
@@ -992,9 +1357,7 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
             </div>
           </div>
 
-          {/* Contenu du modal */}
           <div className="p-6">
-            {/* Sélection du FT */}
             {showFtSelection && !selectedFt && (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
                 <h2 className="text-lg font-semibold mb-4 flex items-center">
@@ -1038,7 +1401,7 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                           </div>
                           <div className="flex items-center text-slate-600">
                             <Calendar className="w-3 h-3 mr-1" />
-                            {formatDate(ftItem.date_ft)} {formatTime(ftItem.heure_ft)}
+                            {formatDateTime(ftItem.date_ft, ftItem.heure_ft)}
                           </div>
                           <div className="flex items-center text-slate-600">
                             <MapPin className="w-3 h-3 mr-1" />
@@ -1058,10 +1421,8 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
               </div>
             )}
 
-            {/* Afficher les données du FT sélectionné et de la descente liée */}
             {selectedFt && (
               <>
-                {/* Section 1: Informations du FT */}
                 <div className="mb-6">
                   <div
                     className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg cursor-pointer"
@@ -1098,7 +1459,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                   {expandedSections.ft && (
                     <div className="mt-4 p-4 bg-slate-50 rounded-lg">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Informations du FT */}
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <div className="flex justify-between items-center">
@@ -1126,7 +1486,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                           </div>
                         </div>
 
-                        {/* Localisation et propriété */}
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <div className="flex justify-between items-center">
@@ -1155,7 +1514,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                         </div>
                       </div>
 
-                      {/* Statut et référence */}
                       <div className="mt-6 pt-6 border-t border-slate-200">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-600">Statut dossier:</span>
@@ -1176,7 +1534,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                   )}
                 </div>
 
-                {/* Section 2: Informations de la Descente */}
                 <div className="mb-6">
                   <div
                     className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg cursor-pointer"
@@ -1208,7 +1565,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                       ) : descenteData ? (
                         <>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {/* Colonne 1: Informations de base */}
                             <div className="space-y-4">
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
@@ -1243,7 +1599,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                                 </p>
                               </div>
                             </div>
-                            {/* Colonne 2: Localisation et contact */}
                             <div className="space-y-4">
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
@@ -1282,7 +1637,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                                 </div>
                               )}
                             </div>
-                            {/* Colonne 3: Infractions et détails */}
                             <div className="space-y-4">
                               {descenteData.infraction && (
                                 <div className="p-3 bg-red-50 rounded-lg border border-red-200">
@@ -1314,7 +1668,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                             </div>
                           </div>
                           
-                          {/* Section Cartographie */}
                           {descenteData && (
                             <div className="mt-6">
                               <div
@@ -1381,7 +1734,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                                     )}
                                   </div>
                                   
-                                  {/* Informations de coordonnées */}
                                   <div className="p-4 border-t border-slate-200 bg-slate-50">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                       <div className="bg-white p-3 rounded-lg border border-slate-200">
@@ -1429,7 +1781,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                   )}
                 </div>
 
-                {/* Section 3: Formulaire Avis de Paiement */}
                 <div>
                   <div
                     className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg cursor-pointer"
@@ -1448,7 +1799,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                   </div>
                   {expandedSections.formulaire && (
                     <form onSubmit={handleSubmit} className="mt-4 space-y-6">
-                      {/* Détails du calcul automatique */}
                       <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                         <h4 className="text-lg font-semibold text-blue-800 mb-3 flex items-center">
                           <Calculator className="w-5 h-5 mr-2" />
@@ -1557,44 +1907,42 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                           </div>
                         </div>
                         
-                        {/* Détails du calcul */}
                         <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
                           <div className="text-sm text-slate-600 mb-2">Détails du calcul:</div>
                           <div className="grid grid-cols-3 gap-4 text-sm">
                             <div className="p-2 bg-slate-50 rounded">
                               <div className="text-slate-500">Redevance unitaire:</div>
-                              <div className="font-bold text-blue-700">{formatNumber(calculDetails.redevance)} Ar/m²</div>
+                              <div className="font-bold text-blue-700">${formatNumber(calculDetails.redevance)} Ar/m²</div>
                             </div>
                             <div className="p-2 bg-slate-50 rounded">
                               <div className="text-slate-500">Amende unitaire:</div>
-                              <div className="font-bold text-red-700">{formatNumber(calculDetails.amende)} Ar/m²</div>
+                              <div className="font-bold text-red-700">${formatNumber(calculDetails.amende)} Ar/m²</div>
                             </div>
                             <div className="p-2 bg-blue-50 rounded">
                               <div className="text-slate-700">Valeur unitaire totale:</div>
-                              <div className="font-bold text-green-700">{formatNumber(formData.valeur_unitaire)} Ar/m²</div>
+                              <div className="font-bold text-green-700">${formatNumber(formData.valeur_unitaire)} Ar/m²</div>
                             </div>
                           </div>
                           
                           {formData.zone_type === 'constructible' && (
                             <div className="mt-3 text-sm text-slate-600 p-2 bg-green-50 rounded">
-                              <span className="font-medium">Type de calcul:</span> Zone constructible = Amende ({formatNumber(calculDetails.amende)} Ar) + Redevance ({formatNumber(calculDetails.redevance)} Ar) = Total ({formatNumber(calculDetails.total)} Ar) par m²
+                              <span className="font-medium">Type de calcul:</span> Zone constructible = Amende (${formatNumber(calculDetails.amende)} Ar) + Redevance (${formatNumber(calculDetails.redevance)} Ar) = Total (${formatNumber(calculDetails.total)} Ar) par m²
                             </div>
                           )}
                           {formData.zone_type === 'inconstructible' && (
                             <div className="mt-3 text-sm text-slate-600 p-2 bg-red-50 rounded">
-                              <span className="font-medium">Type de calcul:</span> Zone inconstructible = Amende seulement ({formatNumber(calculDetails.amende)} Ar) par m² (Pas de redevance)
+                              <span className="font-medium">Type de calcul:</span> Zone inconstructible = Amende seulement (${formatNumber(calculDetails.amende)} Ar) par m² (Pas de redevance)
                             </div>
                           )}
                         </div>
                         
-                        {/* Calcul final */}
                         <div className="mt-4 bg-white p-4 rounded-lg border border-blue-200 shadow-sm">
                           <div className="flex justify-between items-center mb-2">
                             <div className="text-sm text-slate-700">
                               Superficie × Valeur unitaire
                             </div>
                             <div className="text-sm font-medium text-slate-600">
-                              {formatNumber(formData.superficie_remblai)} m² × {formatNumber(formData.valeur_unitaire)} Ar
+                              ${formatNumber(formData.superficie_remblai)} m² × ${formatNumber(formData.valeur_unitaire)} Ar
                             </div>
                           </div>
                           <div className="flex justify-between items-center pt-2 border-t">
@@ -1602,13 +1950,12 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                               Montant total calculé
                             </div>
                             <div className="text-2xl font-bold text-blue-700">
-                              {formatNumber(formData.montant_total)} Ar
+                              ${formatNumber(formData.montant_total)} Ar
                             </div>
                           </div>
                         </div>
                       </div>
                       
-                      {/* Informations de base */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1660,7 +2007,7 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                           </div>
                           {formData.superficie_remblai && (
                             <div className="text-sm text-slate-600 mt-1">
-                              {formatSuperficie(formData.superficie_remblai)}
+                              ${formatSuperficie(formData.superficie_remblai)}
                             </div>
                           )}
                         </div>
@@ -1677,11 +2024,9 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                             placeholder="Motif du paiement"
                           />
-                          <p className="text-xs text-slate-500 mt-1">Ce champ n'est pas sauvegardé dans la base de données</p>
                         </div>
                       </div>
 
-                      {/* Montant calculé et montant en lettres */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1704,12 +2049,9 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                           </div>
                           {formData.montant && (
                             <div className="text-sm text-slate-600 mt-1">
-                              {formatMontant(formData.montant)}
+                              ${formatMontant(formData.montant)}
                             </div>
                           )}
-                          <p className="text-xs text-green-600 mt-1">
-                            ✅ Calculé automatiquement selon la zone et la superficie
-                          </p>
                         </div>
                         
                         <div className="md:col-span-2">
@@ -1725,9 +2067,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                             required
                             readOnly
                           />
-                          <p className="text-xs text-green-600 mt-1">
-                            ✅ Généré automatiquement à partir du montant calculé
-                          </p>
                         </div>
                       </div>
 
@@ -1760,8 +2099,25 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                         </div>
                       </div>
                       
-                      {/* Boutons de soumission */}
                       <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={generatePDF}
+                          disabled={generatingPDF || !selectedFt || !descenteData || !formData.montant}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {generatingPDF ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              Génération...
+                            </>
+                          ) : (
+                            <>
+                              <Printer className="w-4 h-4" />
+                              Générer PDF
+                            </>
+                          )}
+                        </button>
                         {onClose && (
                           <button
                             type="button"
@@ -1777,7 +2133,7 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
                           className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Save className="w-4 h-4" />
-                          Créer l'avis de paiement
+                          Créer et Générer PDF
                         </button>
                       </div>
                     </form>
@@ -1789,7 +2145,6 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         </div>
       </div>
 
-      {/* Modal de confirmation */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
@@ -1803,12 +2158,15 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
             <div className="bg-blue-50 p-3 rounded-lg mb-4">
               <div className="font-medium text-blue-800 mb-1">Détails du calcul:</div>
               <div className="text-sm text-blue-700">
-                <div>• Superficie: {formatNumber(formData.superficie_remblai)} m²</div>
-                <div>• Valeur unitaire: {formatNumber(formData.valeur_unitaire)} Ar/m²</div>
-                <div>• Montant total: <strong>{formatNumber(formData.montant)} Ar</strong></div>
-                <div className="mt-2 italic">{formData.montant_lettre}</div>
+                <div>• Superficie: ${formatNumber(formData.superficie_remblai)} m²</div>
+                <div>• Valeur unitaire: ${formatNumber(formData.valeur_unitaire)} Ar/m²</div>
+                <div>• Montant total: <strong>${formatNumber(formData.montant)} Ar</strong></div>
+                <div className="mt-2 italic">${formData.montant_lettre}</div>
               </div>
             </div>
+            <p className="text-sm text-slate-500 mb-4">
+              Le PDF sera généré et téléchargé automatiquement après l'enregistrement.
+            </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowConfirmModal(false)}
@@ -1818,9 +2176,10 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
               </button>
               <button
                 onClick={handleConfirmSubmit}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
               >
-                Confirmer la création
+                <Printer className="w-4 h-4" />
+                Confirmer et Générer PDF
               </button>
             </div>
           </div>

@@ -8,6 +8,8 @@ import toast from 'react-hot-toast';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // Définition des systèmes de coordonnées
 // Lambert Madagascar (EPSG:29701)
@@ -133,7 +135,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   const [statutDossier, setStatutDossier] = useState<'Complet' | 'Incomplet' | 'Aucun dossier requis'>('Aucun dossier requis');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
-  
+ 
   // Références pour la carte
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -144,14 +146,11 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
     if (str === null || str === undefined) {
       return '';
     }
-
     let cleanStr = typeof str === 'string' ? str : String(str);
     cleanStr = cleanStr.trim();
-
     if (cleanStr === '') {
       return '';
     }
-
     if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
       try {
         const parsed = JSON.parse(cleanStr);
@@ -164,12 +163,10 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
         console.debug('JSON parsing failed, continuing with normal cleaning:', error);
       }
     }
-
     if ((cleanStr.startsWith('"') && cleanStr.endsWith('"')) ||
         (cleanStr.startsWith("'") && cleanStr.endsWith("'"))) {
       cleanStr = cleanStr.slice(1, -1);
     }
-
     return cleanStr;
   };
 
@@ -177,18 +174,18 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   const getImageAsBase64 = async (imagePath: string): Promise<string> => {
     try {
       // Construire l'URL complète
-      const fullUrl = imagePath.startsWith('http') 
-        ? imagePath 
+      const fullUrl = imagePath.startsWith('http')
+        ? imagePath
         : `${window.location.origin}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
-      
+     
       const response = await fetch(fullUrl);
-      
+     
       if (!response.ok) {
         throw new Error(`Erreur HTTP ${response.status} pour ${imagePath}`);
       }
-      
+     
       const blob = await response.blob();
-      
+     
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -211,7 +208,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   // Fonction pour préparer les données pour le PDF
   const prepareFTDataForPDF = () => {
     if (!descenteData || !selectedRendezvous) return null;
-
+    
     // Formater la date
     const formatDateFR = (dateString?: string): string => {
       if (!dateString || dateString === 'undefined') {
@@ -227,7 +224,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
         return new Date().toLocaleDateString('fr-FR');
       }
     };
-
+    
     // Formater l'heure
     const formatTime = (timeString?: string): string => {
       if (!timeString || timeString === 'undefined') {
@@ -235,7 +232,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
       }
       return timeString.substring(0, 5);
     };
-
+    
     // Obtenir les dossiers manquants
     const getMissingDossiers = (): string[] => {
       if (!descenteData.dossier_a_fournir) return [];
@@ -250,7 +247,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
         return [];
       }
     };
-
+    
     // Obtenir le type convoqué en français
     const getTypeConvoqueeFR = (): string => {
       switch (ftData.type_convoquee) {
@@ -262,7 +259,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
           return 'Personne convoquée';
       }
     };
-
+    
     // Calculer la date limite
     const calculateDeadline = (): string => {
       if (!ftData.date_ft || ftData.delai_complement === 0) return '';
@@ -274,46 +271,46 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
         return '';
       }
     };
-
+    
     return {
       // Données de base
       currentDate: new Date().toLocaleDateString('fr-FR'),
       nomComplet: ftData.nom_convoquee || descenteData.nom_personne_r || selectedRendezvous.nom_personne_r || 'NOM DESTINATAIRE',
       referenceFT: ftData.reference_ft || `FT-${selectedRendezvous.id}`,
-      
+     
       // Données de la descente
       dateDescente: formatDateFR(descenteData.date_descente),
       heureDescente: formatTime(descenteData.heure_descente) || 'heure non spécifiée',
       commune: descenteData.commune || 'COMMUNE NON SPECIFIEE',
       fokontany: descenteData.fokontany || 'FOKONTANY NON SPECIFIE',
       localite: descenteData.localisation || descenteData.adresse_r || 'LOCALITE NON SPECIFIEE',
-      
+     
       // Informations du terrain
       titreTerrain: ftData.titre_terrain || 'TITRE TERRAIN NON SPECIFIE',
       nomproprietaire: ftData.nom_proprietaire || ftData.nom_convoquee || descenteData.nom_personne_r || 'PROPRIETAIRE NON SPECIFIE',
       coordX: descenteData.x_coord || 'X',
       coordY: descenteData.y_coord || 'Y',
       superficie: ftData.superficie_remblai || descenteData.superficie ? `${ftData.superficie_remblai || descenteData.superficie} m²` : 'SUPERFICIE NON SPECIFIEE',
-      
+     
       // Informations sur l'infraction
       infraction: cleanJsonString(descenteData.infraction) || 'INFRACTION NON SPECIFIEE',
       action: cleanJsonString(descenteData.actions) || 'ACTION NON SPECIFIEE',
-      
+     
       // Informations du rendez-vous FT
       formattedDateFT: formatDateFR(ftData.date_ft),
       formattedHeureFT: formatTime(ftData.heure_ft) || 'heure non spécifiée',
       typeConvoquee: getTypeConvoqueeFR(),
       cin: ftData.cin || 'CIN NON SPECIFIE',
       contact: ftData.contact || descenteData.contact_r || selectedRendezvous.contact_r || 'CONTACT NON SPECIFIE',
-      
+     
       // Dossiers
       dossierType: ftData.dossiers_fournis || ['Raportan-tsidina', 'Fahazoan-dàlana'],
       missingDossiers: getMissingDossiers(),
       deadline: calculateDeadline(),
-      
+     
       // Conclusion
       mesure: ftData.conclusion || 'Fanarahan-dalàna ny lalàna momba ny fananganana tany feno sy ny fanaovana asa fanodinana ary ny fanajana ny fomba fiasa ara-pahefana.',
-      
+     
       // Données supplémentaires pour le style complet
       nom_compleet: ftData.nom_convoquee || descenteData.nom_personne_r,
       nom_convoquee: ftData.nom_convoquee,
@@ -333,37 +330,31 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
     };
   };
 
-  // Fonction pour générer le PDF avec les images en Base64
+  // Fonction pour générer et télécharger le PDF
   const generatePDF = async () => {
+    // Déclarer pdfContent en dehors du bloc try pour qu'il soit accessible dans le finally
+    let pdfContent: HTMLDivElement | null = null;
+    
     if (!descenteData) {
       toast.error('Veuillez d\'abord charger les données de la descente');
       return;
     }
-
+    
     const preparedData = prepareFTDataForPDF();
     if (!preparedData) {
       toast.error('Impossible de préparer les données pour le PDF');
       return;
     }
-
+    
     try {
       setGeneratingPDF(true);
-
       // Charger toutes les images en Base64
       const [headerImage, emblemImage, footerImage] = await Promise.all([
         getImageAsBase64('/images/header_vm.png'),
         getImageAsBase64('/images/emblème_vf.png'),
         getImageAsBase64('/images/footer.png')
       ]);
-
-      // Créer une nouvelle fenêtre pour le PDF
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        toast.error('Veuillez autoriser les popups pour générer le PDF');
-        setGeneratingPDF(false);
-        return;
-      }
-
+      
       // Formater la date limite si elle existe
       const formatDeadlineFR = (deadlineString: string): string => {
         if (!deadlineString) return '';
@@ -375,411 +366,363 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
           return '';
         }
       };
-
-      // Générer le HTML avec les images en Base64
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html lang="fr">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Fitanana An-Tsoratra - ${preparedData.referenceFT}</title>
-          <style>
-            @page {
-              size: A4;
-              margin: 0;
-            }
-            
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: 'Times New Roman', serif;
-              font-size: 12px;
-              line-height: 1.4;
-              color: #000;
-              background-color: #fff;
-              width: 210mm;
-              min-height: 297mm;
-              position: relative;
-              box-sizing: border-box;
-            }
-            
-            .page-container {
-              width: 210mm;
-              min-height: 297mm;
-              margin: 0 auto;
-              position: relative;
-              box-sizing: border-box;
-              background-color: white;
-              page-break-inside: avoid;
-            }
-            
-            .header-image {
-              height: 100px;
-              width: 100%;
-              background-image: url('${headerImage}');
-              background-size: cover;
-              background-repeat: no-repeat;
-              background-position: center;
-              margin-bottom: 5px;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            
-            .logo-center {
-              height: 80px;
-              width: 80%;
-              position: relative;
-              top: -90px;
-              background-image: url('${emblemImage}');
-              background-size: contain;
-              background-repeat: no-repeat;
-              background-position: center center;
-              margin: 0 auto;
-              margin-bottom: -120px;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            
-            .content-wrapper {
-              padding: 10mm;
-              position: relative;
-              min-height: calc(297mm - 200px - 250px - 30mm);
-            }
-            
-            .header-section {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              margin-bottom: 5px;
-              border-bottom: 1px solid #333;
-              padding-bottom: 15px;
-            }
-            
-            .left-column {
-              flex: 1;
-              text-align: center;
-            }
-            
-            .right-column {
-              flex: 1;
-              text-align: right;
-            }
-            
-            .title-section {
-              text-align: center;
-              margin: 20px 0;
-              font-weight: bold;
-              font-size: 14px;
-              font-family: Arial, Helvetica, sans-serif;
-            }
-            
-            .info-section {
-              font-family: Arial, Helvetica, sans-serif;
-              margin: 10px 0 20px 0;
-              padding: 0;
-            }
-            
-            .separator {
-              border-top: 1px solid #000;
-              margin: 10px 0;
-              width: 100%;
-            }
-            
-            .content {
-              text-align: justify;
-            }
-            
-            .paragraph {
-              margin-bottom: 15px;
-              text-indent: 20px;
-            }
-            
-            .document-list {
-              margin-left: 25px;
-              margin-bottom: 10px;
-            }
-            
-            .document-list li {
-              margin-bottom: 3px;
-            }
-            
-            .signature-section {
-              margin-top: 40px;
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-            }
-            
-            .signature-box {
-              border-top: 1px solid #000;
-              width: 250px;
-              padding-top: 5px;
-            }
-            
-            .signature-text {
-              text-align: center;
-              font-style: italic;
-            }
-            
-            
-            
-            .bold {
-              font-weight: bold;
-            }
-            
-            .italic {
-              font-style: italic;
-            }
-            
-            .underline {
-              text-decoration: underline;
-            }
-            
-            @media print {
-              body {
-                margin: 0;
-                padding: 0;
-                background: white;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-              
-              .page-container {
-                width: 100%;
-                height: 100%;
-                margin: 0;
-                page-break-inside: avoid;
-                break-inside: avoid;
-              }
-              
-              .header-image, .logo-center, .footer-image {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                background-color: transparent !important;
-              }
-              
-              * {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="page-container">
-            <!-- En-tête avec image -->
-            <div class="header-image"></div>
-            
-            <!-- Logo central -->
-            <div class="logo-center"></div>
-
-            <!-- Contenu du document -->
-            <div class="content-wrapper">
-              <!-- En-tête avec trois colonnes -->
-              <div class="header-section">
-                <div class="left-column">
-                  <div class="bold" style="margin-bottom: 2px;">MINISITERAN'NY FITSINJIRAM-PAHEFANA</div>
-                  <div class="bold" style="margin-bottom: 2px;">SY NY FANAJARIANA NY TANY</div>
-                  <div style="margin-bottom: 5px;">-------------------</div>
-                  <div class="italic" style="margin-bottom: 2px;">DIRECTION GENERALE</div>
-                  <div class="italic" style="margin-bottom: 2px;">NY FAHEFANA MIKAROKA NY FIAROVANA NY LEMAKA</div>
-                  <div class="italic" style="margin-bottom: 2px;">ANTANANARIVO AMIN'NY TONDRA-DRANO (APIPA)</div>
-                </div>
-                
-                <div class="right-column">
-                  <div style="margin-bottom: 3px;">Antananarivo, ny ${preparedData.currentDate}</div>
-                  <div style="margin-bottom: 3px;">Ny Tale Jeneraly</div>
-                  <div style="margin-bottom: 3px;">Ho an'ny</div>
-                  <div class="bold">Monsieur ${preparedData.nomComplet}</div>
-                </div>
+      
+      // Créer un élément div temporaire pour le rendu HTML
+      pdfContent = document.createElement('div');
+      pdfContent.style.position = 'absolute';
+      pdfContent.style.left = '-9999px';
+      pdfContent.style.width = '210mm';
+      pdfContent.style.minHeight = '297mm';
+      pdfContent.style.backgroundColor = 'white';
+      pdfContent.style.padding = '0';
+      pdfContent.style.boxSizing = 'border-box';
+      
+      // Appliquer les styles directement
+      pdfContent.innerHTML = `
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Times New Roman', serif;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #000;
+            background-color: #fff;
+          }
+         
+          .page-container {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            position: relative;
+            box-sizing: border-box;
+            background-color: white;
+            page-break-inside: avoid;
+          }
+         
+          .header-image {
+            height: 100px;
+            width: 100%;
+            background-image: url('${headerImage}');
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center;
+            margin-bottom: 5px;
+          }
+         
+          .logo-center {
+            height: 80px;
+            width: 80%;
+            position: relative;
+            top: -90px;
+            background-image: url('${emblemImage}');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center center;
+            margin: 0 auto;
+            margin-bottom: -120px;
+          }
+         
+          .content-wrapper {
+            padding: 10mm;
+            position: relative;
+            min-height: calc(297mm - 200px - 250px - 30mm);
+          }
+         
+          .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+          }
+         
+          .left-column {
+            flex: 1;
+            text-align: center;
+          }
+         
+          .right-column {
+            flex: 1;
+            text-align: right;
+          }
+         
+          .title-section {
+            text-align: center;
+            margin: 20px 0;
+            font-weight: bold;
+            font-size: 14px;
+            font-family: Arial, Helvetica, sans-serif;
+          }
+         
+          .info-section {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 10px 0 20px 0;
+            padding: 0;
+          }
+         
+          .separator {
+            border-top: 1px solid #000;
+            margin: 10px 0;
+            width: 100%;
+          }
+         
+          .content {
+            text-align: justify;
+          }
+         
+          .paragraph {
+            margin-bottom: 15px;
+            text-indent: 20px;
+          }
+         
+          .document-list {
+            margin-left: 25px;
+            margin-bottom: 10px;
+          }
+         
+          .document-list li {
+            margin-bottom: 3px;
+          }
+         
+          .signature-section {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+          }
+         
+          .signature-box {
+            border-top: 1px solid #000;
+            width: 250px;
+            padding-top: 5px;
+          }
+         
+          .signature-text {
+            text-align: center;
+            font-style: italic;
+          }
+         
+          .footer-image {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100px;
+            background-image: url('${footerImage}');
+            background-size: cover;
+            background-position: center;
+          }
+         
+          .bold {
+            font-weight: bold;
+          }
+         
+          .italic {
+            font-style: italic;
+          }
+         
+          .underline {
+            text-decoration: underline;
+          }
+        </style>
+        <div class="page-container">
+          <!-- En-tête avec image -->
+          <div class="header-image"></div>
+         
+          <!-- Logo central -->
+          <div class="logo-center"></div>
+          <!-- Contenu du document -->
+          <div class="content-wrapper">
+            <!-- En-tête avec trois colonnes -->
+            <div class="header-section">
+              <div class="left-column">
+                <div class="bold" style="margin-bottom: 2px;">MINISITERAN'NY FITSINJIRAM-PAHEFANA</div>
+                <div class="bold" style="margin-bottom: 2px;">SY NY FANAJARIANA NY TANY</div>
+                <div style="margin-bottom: 5px;">-------------------</div>
+                <div class="italic" style="margin-bottom: 2px;">DIRECTION GENERALE</div>
+                <div class="italic" style="margin-bottom: 2px;">NY FAHEFANA MIKAROKA NY FIAROVANA NY LEMAKA</div>
+                <div class="italic" style="margin-bottom: 2px;">ANTANANARIVO AMIN'NY TONDRA-DRANO (APIPA)</div>
               </div>
-              
-              <!-- Numéro d'avis -->
-              <div class="title-section">
-                Fitanana an-Tsoratra faha <span class="underline">${preparedData.referenceFT}</span>
+             
+              <div class="right-column">
+                <div style="margin-bottom: 3px;">Antananarivo, ny ${preparedData.currentDate}</div>
+                <div style="margin-bottom: 3px;">Ny Tale Jeneraly</div>
+                <div style="margin-bottom: 3px;">Ho an'ny</div>
+                <div class="bold">Monsieur ${preparedData.nomComplet}</div>
               </div>
-              
-              <!-- Informations de titre -->
-              <div class="info-section">
-                <div style="font-weight: 600; margin-bottom: 3px;">
-                  Antony: <span style="font-weight: 100;">Fitaterana rano-tany</span>
-                </div>
-                <div style="font-weight: 600; margin-bottom: 3px;">
-                  Daty: <span style="font-weight: 100;">${preparedData.dateDescente}</span>
-                </div>
-                <div style="font-weight: 600; margin-bottom: 3px;">
-                  Toerana: <span style="font-weight: 100;">Biraon'ny APIPA Anosizato Antsinanana</span>
-                </div>
-                <div style="font-weight: 600; margin-bottom: 10px;">
-                  Tanjona: <span style="font-weight: 100;">Fampanarahandalana</span>
-                </div>
-                <div class="separator"></div>
+            </div>
+           
+            <!-- Numéro d'avis -->
+            <div class="title-section">
+              Fitanana an-Tsoratra faha <span class="underline">${preparedData.referenceFT}</span>
+            </div>
+           
+            <!-- Informations de titre -->
+            <div class="info-section">
+              <div style="font-weight: 600; margin-bottom: 3px;">
+                Antony: <span style="font-weight: 100;">Fitaterana rano-tany</span>
               </div>
-              
-              <!-- Corps du document -->
-              <div class="content">
-                <!-- Premier paragraphe -->
-                <div class="paragraph">
-                  Araka ny fepetra ao amin'ny <span class="italic">Dekri governemantaly n°2019-1543 ny 11 Septambra 2019</span> 
-                  momba ny fandaminana ny asa fananganana tany feno ao amin'ireo faritra fehezin'ny APIPA, 
-                  ary mampiasa ny <span class="italic">lalàna n°2015-052 ny 03 Febroary 2016</span> mikasika ny Fandrindrana ny Tanibe sy ny Fonènana ;
-                </div>
-                
-                <!-- Deuxième paragraphe -->
-                <div class="paragraph">
-                  Arak'ireo baiko nomen'ny Tale Jeneralin'ny APIPA, nisy fitsidina teo amin'ny toerana natao 
-                  tamin'ny <span class="bold">${preparedData.dateDescente}</span> amin'ny <span class="bold">${preparedData.heureDescente}</span>, 
-                  teo amin'ny <span class="bold">${preparedData.commune}</span>, Fokontany <span class="bold">${preparedData.fokontany}</span>, 
-                  Toerana <span class="bold">${preparedData.localite}</span>. Ny tany voamarika amin'ny laharana 
-                  <span class="bold"> ${preparedData.titreTerrain}</span>, an'ny 
-                  <span class="bold"> ${preparedData.nomproprietaire}</span>, 
-                  amin'ny koordinà <span class="bold">${preparedData.coordX}</span> ; <span class="bold">${preparedData.coordY}</span> 
-                  velarana <span class="bold">${preparedData.superficie}</span>.
-                </div>
-                
-                <!-- Troisième paragraphe -->
-                <div class="paragraph">
-                  Hita fa misy <span class="bold">${preparedData.infraction}</span> eo amin'io tany io, 
-                  izay niteraka ny fandraiketana ny <span class="bold">${preparedData.action}</span>.
-                </div>
-                
-                <!-- Quatrième paragraphe -->
-                <div class="paragraph">
-                  Antsoina ianao hankany amin'ny biraon'ny APIPA ny <span class="bold">${preparedData.formattedDateFT}</span> 
-                  amin'ny <span class="bold">${preparedData.formattedHeureFT}</span> ho <span class="bold">${preparedData.typeConvoquee}</span>, 
-                  <span class="bold"> ${preparedData.nomComplet}</span>, manana CIN n° 
-                  <span class="bold"> ${preparedData.cin}</span>, azo antsoina amin'ny <span class="bold">${preparedData.contact}</span>.
-                </div>
-                
-                <!-- Documents apportés -->
-                <div style="margin-bottom: 15px;">
-                  <div class="bold" style="margin-bottom: 5px;">Taratasy naterina :</div>
-                  <ul class="document-list">
-                    ${preparedData.dossierType && preparedData.dossierType.length > 0 
-                      ? preparedData.dossierType.map(doc => `<li>— ${doc}</li>`).join('')
-                      : '<li>— Tsy misy taratasy naterina</li>'
-                    }
-                  </ul>
-                </div>
-                
-                <!-- Documents manquants -->
-                <div style="margin-bottom: 15px;">
-                  <div class="bold" style="margin-bottom: 5px;">Taratasy tsy ampy tokony hotaterina :</div>
-                  <ul class="document-list">
-                    ${preparedData.missingDossiers && preparedData.missingDossiers.length > 0 
-                      ? preparedData.missingDossiers.map(doc => `<li>— ${doc}</li>`).join('')
-                      : '<li>— Tsy misy taratasy tsy ampy</li>'
-                    }
-                  </ul>
-                  ${preparedData.deadline ? `
-                    <div class="bold" style="margin-top: 10px;">
-                      Daty farany fametrahana : <span class="underline">${formatDeadlineFR(preparedData.deadline)}</span>
-                    </div>
-                  ` : ''}
-                </div>
-                
-                <!-- Mesures requises -->
-                <div style="margin-bottom: 15px;">
-                  <div class="bold" style="margin-bottom: 5px;">Fepetra takin'ny APIPA :</div>
-                  <div class="paragraph" style="margin-bottom: 10px;">
-                    ${preparedData.mesure}
+              <div style="font-weight: 600; margin-bottom: 3px;">
+                Daty: <span style="font-weight: 100;">${preparedData.dateDescente}</span>
+              </div>
+              <div style="font-weight: 600; margin-bottom: 3px;">
+                Toerana: <span style="font-weight: 100;">Biraon'ny APIPA Anosizato Antsinanana</span>
+              </div>
+              <div style="font-weight: 600; margin-bottom: 10px;">
+                Tanjona: <span style="font-weight: 100;">Fampanarahandalana</span>
+              </div>
+              <div class="separator"></div>
+            </div>
+           
+            <!-- Corps du document -->
+            <div class="content">
+              <!-- Premier paragraphe -->
+              <div class="paragraph">
+                Araka ny fepetra ao amin'ny <span class="italic">Dekri governemantaly n°2019-1543 ny 11 Septambra 2019</span>
+                momba ny fandaminana ny asa fananganana tany feno ao amin'ireo faritra fehezin'ny APIPA,
+                ary mampiasa ny <span class="italic">lalàna n°2015-052 ny 03 Febroary 2016</span> mikasika ny Fandrindrana ny Tanibe sy ny Fonènana ;
+              </div>
+             
+              <!-- Deuxième paragraphe -->
+              <div class="paragraph">
+                Arak'ireo baiko nomen'ny Tale Jeneralin'ny APIPA, nisy fitsidina teo amin'ny toerana natao
+                tamin'ny <span class="bold">${preparedData.dateDescente}</span> amin'ny <span class="bold">${preparedData.heureDescente}</span>,
+                teo amin'ny <span class="bold">${preparedData.commune}</span>, Fokontany <span class="bold">${preparedData.fokontany}</span>,
+                Toerana <span class="bold">${preparedData.localite}</span>. Ny tany voamarika amin'ny laharana
+                <span class="bold"> ${preparedData.titreTerrain}</span>, an'ny
+                <span class="bold"> ${preparedData.nomproprietaire}</span>,
+                amin'ny koordinà <span class="bold">${preparedData.coordX}</span> ; <span class="bold">${preparedData.coordY}</span>
+                velarana <span class="bold">${preparedData.superficie}</span>.
+              </div>
+             
+              <!-- Troisième paragraphe -->
+              <div class="paragraph">
+                Hita fa misy <span class="bold">${preparedData.infraction}</span> eo amin'io tany io,
+                izay niteraka ny fandraiketana ny <span class="bold">${preparedData.action}</span>.
+              </div>
+             
+              <!-- Quatrième paragraphe -->
+              <div class="paragraph">
+                Antsoina ianao hankany amin'ny biraon'ny APIPA ny <span class="bold">${preparedData.formattedDateFT}</span>
+                amin'ny <span class="bold">${preparedData.formattedHeureFT}</span> ho <span class="bold">${preparedData.typeConvoquee}</span>,
+                <span class="bold"> ${preparedData.nomComplet}</span>, manana CIN n°
+                <span class="bold"> ${preparedData.cin}</span>, azo antsoina amin'ny <span class="bold">${preparedData.contact}</span>.
+              </div>
+             
+              <!-- Documents apportés -->
+              <div style="margin-bottom: 15px;">
+                <div class="bold" style="margin-bottom: 5px;">Taratasy naterina :</div>
+                <ul class="document-list">
+                  ${preparedData.dossierType && preparedData.dossierType.length > 0
+                    ? preparedData.dossierType.map(doc => `<li>— ${doc}</li>`).join('')
+                    : '<li>— Tsy misy taratasy nentena</li>'
+                  }
+                </ul>
+              </div>
+             
+              <!-- Documents manquants -->
+              <div style="margin-bottom: 15px;">
+                <div class="bold" style="margin-bottom: 5px;">Taratasy tsy ampy tokony hotaterina :</div>
+                <ul class="document-list">
+                  ${preparedData.missingDossiers && preparedData.missingDossiers.length > 0
+                    ? preparedData.missingDossiers.map(doc => `<li>— ${doc}</li>`).join('')
+                    : '<li>— Tsy misy taratasy tsy ampy</li>'
+                  }
+                </ul>
+                ${preparedData.deadline ? `
+                  <div class="bold" style="margin-top: 10px;">
+                    Daty farany fametrahana : <span class="underline">${formatDeadlineFR(preparedData.deadline)}</span>
                   </div>
-                </div>
-                
-                <!-- Avertissement -->
-                <div class="paragraph">
-                  Tena ilaina ny manaraka ny fepetra rehetra voalaza etsy ambony. Ny tsy fanarahana, na ampahany aza, 
-                  ho heverina ho tsy fanarahana lalàna ary mety hitarika ny fanenjehana ara-pitsarana avy amin'ny fahefana manan-draharaha.
-                </div>
-                
-                <!-- Conclusion -->
-                <div class="paragraph" style="margin-bottom: 20px;">
-                  Mba hanamafisana ny fahafantarana ity fanambarana ity sy ny fanolorana tena hanaraka ny fepetrin'ny APIPA, 
-                  azafady sonia ity taratasy ity amin'ny dika roa.
+                ` : ''}
+              </div>
+             
+              <!-- Mesures requises -->
+              <div style="margin-bottom: 15px;">
+                <div class="bold" style="margin-bottom: 5px;">Fepetra takin'ny APIPA :</div>
+                <div class="paragraph" style="margin-bottom: 10px;">
+                  ${preparedData.mesure}
                 </div>
               </div>
-              
-              <!-- Sections de signature -->
-              <div class="signature-section">
-                <div>
-                  <div class="bold" style="margin-bottom: 20px;">Vakina sy ekena,</div>
-                  <div class="signature-box">
-                    <div class="signature-text">Sonin'ny mpandray</div>
-                  </div>
+             
+              <!-- Avertissement -->
+              <div class="paragraph">
+                Tena ilaina ny manaraka ny fepetra rehetra voalaza etsy ambony. Ny tsy fanarahana, na ampahany aza,
+                ho heverina ho tsy fanarahana lalàna ary mety hitarika ny fanenjehana ara-pitsarana avy amin'ny fahefana manan-draharaha.
+              </div>
+             
+              <!-- Conclusion -->
+              <div class="paragraph" style="margin-bottom: 20px;">
+                Mba hanamafisana ny fahafantarana ity fanambarana ity sy ny fanolorana tena hanaraka ny fepetrin'ny APIPA,
+                azafady sonia ity taratasy ity amin'ny dika roa.
+              </div>
+            </div>
+           
+            <!-- Sections de signature -->
+            <div class="signature-section">
+              <div>
+                <div class="bold" style="margin-bottom: 20px;">Vakina sy ekena,</div>
+                <div class="signature-box">
+                  <div class="signature-text">Sonin'ny mpandray</div>
                 </div>
-                <div style="text-align: right;">
-                  <div class="bold" style="margin-bottom: 5px;">Antananarivo, ny ${preparedData.currentDate}</div>
-                  <div class="italic" style="margin-bottom: 20px;">Ny Tale Jeneralin'ny APIPA</div>
-                  <div class="signature-box">
-                    <div class="signature-text">Sonia sy tombo-kase</div>
-                  </div>
+              </div>
+              <div style="text-align: right;">
+                <div class="bold" style="margin-bottom: 5px;">Antananarivo, ny ${preparedData.currentDate}</div>
+                <div class="italic" style="margin-bottom: 20px;">Ny Tale Jeneralin'ny APIPA</div>
+                <div class="signature-box">
+                  <div class="signature-text">Sonia sy tombo-kase</div>
                 </div>
               </div>
             </div>
-            
-            <!-- Pied de page avec image -->
-            <div class="footer-image"></div>
           </div>
-        </body>
-        </html>
-      `);
-
-      // Fermer le document
-      printWindow.document.close();
+         
+          <!-- Pied de page avec image -->
+          <div class="footer-image"></div>
+        </div>
+      `;
       
-      // Attendre que le contenu soit chargé puis imprimer
-      printWindow.onload = function() {
-        setTimeout(() => {
-          printWindow.focus();
-          printWindow.print();
-          
-          // Fermer la fenêtre après impression
-          const checkPrintComplete = () => {
-            if (printWindow.closed) {
-              toast.success('PDF généré avec succès!');
-              setGeneratingPDF(false);
-              return;
-            }
-            
-            // Vérifier si l'impression est terminée (pour certains navigateurs)
-            if (printWindow.matchMedia) {
-              const mediaQueryList = printWindow.matchMedia('print');
-              const handler = (mql: MediaQueryListEvent) => {
-                if (!mql.matches) {
-                  // L'impression est terminée
-                  setTimeout(() => {
-                    printWindow.close();
-                    toast.success('PDF généré avec succès!');
-                    setGeneratingPDF(false);
-                  }, 500);
-                  mediaQueryList.removeEventListener('change', handler);
-                }
-              };
-              mediaQueryList.addEventListener('change', handler);
-            } else {
-              // Fallback pour les anciens navigateurs
-              setTimeout(() => {
-                printWindow.close();
-                toast.success('PDF généré avec succès!');
-                setGeneratingPDF(false);
-              }, 1000);
-            }
-          };
-          
-          checkPrintComplete();
-        }, 500);
-      };
+      // Ajouter le div au body pour le rendu
+      document.body.appendChild(pdfContent);
       
-      // Gérer les erreurs de chargement
-      printWindow.onerror = function() {
-        toast.error('Erreur lors du chargement du PDF');
-        setGeneratingPDF(false);
-      };
+      // Attendre le rendu complet (images chargées)
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Augmenter si nécessaire pour charger les images
+      
+      // Capturer avec html2canvas
+      const canvas = await html2canvas(pdfContent, {
+        scale: 2,
+        useCORS: true,
+        logging: true,
+        backgroundColor: '#ffffff',
+        windowWidth: 793, // Approx 210mm in pixels at 96dpi
+        windowHeight: 1122 // Approx 297mm
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Créer le PDF
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      
+      // Télécharger le PDF
+      pdf.save(`Fitanana_An-Tsoratra_${preparedData.referenceFT}.pdf`);
+      toast.success('PDF téléchargé avec succès!');
       
     } catch (error) {
       console.error('Erreur lors de la génération du PDF:', error);
       toast.error(`Erreur lors de la génération du PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    } finally {
+      // Nettoyer le div temporaire
+      if (pdfContent && pdfContent.parentNode) {
+        pdfContent.parentNode.removeChild(pdfContent);
+      }
       setGeneratingPDF(false);
     }
   };
@@ -790,15 +733,15 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
       setStatutDossier('Aucun dossier requis');
       return;
     }
-    
+   
     const tousDossiersCoches = availableDossiers.every(dossier =>
       ftData.dossiers_fournis.includes(dossier)
     );
-    
+   
     const auMoinsUnNonCoche = availableDossiers.some(dossier =>
       !ftData.dossiers_fournis.includes(dossier)
     );
-
+    
     if (tousDossiersCoches) {
       setStatutDossier('Complet');
     } else if (auMoinsUnNonCoche) {
@@ -811,34 +754,34 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   // Fonction pour initialiser la carte
   const initializeMap = () => {
     if (!mapContainerRef.current || mapRef.current) return;
-
+    
     try {
       // Initialiser la carte
       mapRef.current = L.map(mapContainerRef.current).setView([-18.8792, 47.5079], 15);
-
+      
       // Ajouter les couches de base
       const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
       });
-
+      
       const satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
         attribution: 'Imagery © <a href="https://maps.google.com">Google Maps</a>',
         maxZoom: 19
       });
-
+      
       // Ajouter la couche satellite par défaut
       satellite.addTo(mapRef.current);
-
+      
       // Ajouter le contrôle des couches
       L.control.layers({
         "Vue standard 🗺️": osm,
         "Vue satellite 🌍": satellite
       }).addTo(mapRef.current);
-
+      
       // Mettre à jour la carte avec les données de descente
       updateMapWithDescenteData();
-
+      
     } catch (error) {
       console.error('Erreur lors de l\'initialisation de la carte:', error);
     }
@@ -847,24 +790,24 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   // Mettre à jour la carte avec les coordonnées de la descente
   const updateMapWithDescenteData = () => {
     if (!mapRef.current || !descenteData) return;
-    
+   
     try {
       // Nettoyer les coordonnées
       const xCoord = descenteData.x_coord ? parseFloat(descenteData.x_coord) : null;
       const yCoord = descenteData.y_coord ? parseFloat(descenteData.y_coord) : null;
-      
+     
       if (xCoord && yCoord) {
         // Convertir Lambert en WGS84
         const coords = convertLambertToWGS84(xCoord, yCoord);
-        
+       
         // Retirer l'ancien marqueur s'il existe
         if (markerRef.current) {
           mapRef.current.removeLayer(markerRef.current);
         }
-        
+       
         // Créer un marqueur à la position convertie
         markerRef.current = L.marker([coords.lat, coords.lng]);
-        
+       
         // Ajouter un popup informatif
         markerRef.current.bindPopup(`
           <div style="font-family: Arial, sans-serif; padding: 10px;">
@@ -879,16 +822,16 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
             Y: ${yCoord.toLocaleString()}
           </div>
         `);
-        
+       
         // Ajouter le marqueur à la carte
         markerRef.current.addTo(mapRef.current);
-        
+       
         // Centrer la carte sur la nouvelle position
         mapRef.current.setView([coords.lat, coords.lng], 15);
-        
+       
         // Ouvrir le popup
         markerRef.current.openPopup();
-        
+       
       } else {
         // Afficher un message si pas de coordonnées
         mapRef.current.setView([-18.8792, 47.5079], 13);
@@ -897,7 +840,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
           .setContent('<div style="padding: 10px;">Aucune coordonnée disponible pour cette descente</div>')
           .openOn(mapRef.current);
       }
-      
+     
     } catch (error) {
       console.error('Erreur lors de la mise à jour de la carte:', error);
     }
@@ -916,20 +859,19 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   useEffect(() => {
     const fetchDescenteData = async () => {
       if (!selectedRendezvous) return;
-
+      
       try {
         setLoading(true);
         const response = await fetch(`http://localhost:3000/api/rendezvousft/${selectedRendezvous.id}/full`);
-
+        
         if (!response.ok) {
           throw new Error('Erreur lors de la récupération des données');
         }
-
+        
         const result = await response.json();
-
         if (result.success && result.data) {
           setDescenteData(result.data.descente || null);
-
+          
           // Pré-remplir les champs
           setFtData(prev => ({
             ...prev,
@@ -948,13 +890,13 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
             nom_proprietaire: '',
             reference_ft: `FT-${selectedRendezvous.id}-${new Date().getFullYear()}`
           }));
-          
+         
           // Parse dossiers a fournir
           if (result.data.descente?.dossier_a_fournir) {
             const dossiersStr = cleanJsonString(result.data.descente.dossier_a_fournir);
             const dossiersList = dossiersStr.split(',').map(d => d.trim()).filter(d => d);
             setAvailableDossiers(dossiersList);
-           
+          
             if (dossiersList.length === 0) {
               setStatutDossier('Aucun dossier requis');
             } else {
@@ -972,6 +914,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
         setLoading(false);
       }
     };
+    
     fetchDescenteData();
   }, [selectedRendezvous]);
 
@@ -980,7 +923,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
     if (expandedSections.carte && !mapRef.current && mapContainerRef.current) {
       initializeMap();
     }
-    
+   
     // Redimensionner la carte quand elle devient visible
     if (expandedSections.carte && mapRef.current) {
       resizeMap();
@@ -1015,29 +958,30 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
       setError('Aucun rendez-vous sélectionné');
       return;
     }
-    
+   
     if (!ftData.date_ft) {
       setError('La date du FT est obligatoire');
       return;
     }
-    
+   
     if (!ftData.reference_ft) {
       setError('La référence FT est obligatoire');
       return;
     }
-    
+   
     if (statutDossier === 'Incomplet' && ftData.delai_complement === 0) {
       setError('Pour un dossier incomplet, veuillez spécifier un délai pour le complément de dossier');
       return;
     }
-    
+   
     setShowConfirmModal(true);
   };
 
   const handleConfirmSubmit = async () => {
     setShowConfirmModal(false);
+    
     if (!selectedRendezvous) return;
-
+    
     const ftDataToSend = {
       reference_ft: ftData.reference_ft,
       date_ft: ftData.date_ft,
@@ -1059,10 +1003,11 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
       iddescente: selectedRendezvous.iddescente,
       idrendezvous: selectedRendezvous.id
     };
-
+    
     try {
       setSaving(true);
       setError(null);
+      
       const response = await fetch('http://localhost:3000/api/ft', {
         method: 'POST',
         headers: {
@@ -1070,19 +1015,20 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
         },
         body: JSON.stringify(ftDataToSend)
       });
-      const result = await response.json();
       
+      const result = await response.json();
+     
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Erreur lors de l\'enregistrement');
       }
-      
+     
       toast.success('Procès-verbal créé avec succès!');
-      
+     
       // Générer automatiquement le PDF après l'enregistrement
       await generatePDF();
-      
+     
       handleCloseFTModal();
-      
+     
       if (onSuccess) {
         onSuccess();
       }
@@ -1098,6 +1044,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
   // Fonction pour générer le PDF manuellement
   const handleGeneratePDF = async () => {
     await generatePDF();
+    handleCloseFTModal();
   };
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -1138,12 +1085,9 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
 
   const getTypeFromInfraction = (infraction?: string) => {
     if (!infraction) return 'Inspection';
-
     const cleanInfraction = cleanJsonString(infraction);
     if (!cleanInfraction || cleanInfraction.trim() === '') return 'Inspection';
-
     const lowerInfraction = cleanInfraction.toLowerCase();
-
     if (lowerInfraction.includes('construction')) return 'Construction';
     if (lowerInfraction.includes('réunion')) return 'Réunion';
     if (lowerInfraction.includes('entretien')) return 'Entretien';
@@ -1155,20 +1099,17 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
     if (lowerInfraction.includes('inspection')) return 'Inspection';
     if (lowerInfraction.includes('visite')) return 'Visite';
     if (lowerInfraction.includes('surveillance')) return 'Surveillance';
-
     return cleanInfraction.length > 30 ? cleanInfraction.substring(0, 30) + '...' : cleanInfraction;
   };
 
   const getLocationText = () => {
     if (!descenteData) return 'Non spécifié';
-
     const parts = [
       descenteData.adresse_r,
       descenteData.commune,
       descenteData.fokontany,
       descenteData.district
     ].filter(Boolean);
-
     return parts.length > 0 ? parts.join(', ') : 'Non spécifié';
   };
 
@@ -1192,7 +1133,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
     try {
       const response = await fetch('http://localhost:3000/api/ft/generate/reference');
       const result = await response.json();
-     
+    
       if (result.success && result.reference) {
         setFtData(prev => ({ ...prev, reference_ft: result.reference }));
       }
@@ -1243,9 +1184,9 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
               >
                 <FileText className="w-5 h-5 text-slate-600" />
               </button>
-              <button 
-                className="p-2 hover:bg-slate-100 rounded-full" 
-                title="Générer PDF" 
+              <button
+                className="p-2 hover:bg-slate-100 rounded-full"
+                title="Générer PDF"
                 onClick={handleGeneratePDF}
                 disabled={saving || generatingPDF || !descenteData}
               >
@@ -1255,7 +1196,12 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                   <Printer className="w-5 h-5 text-slate-600" />
                 )}
               </button>
-              <button className="p-2 hover:bg-slate-100 rounded-full" title="Exporter" disabled={saving || generatingPDF}>
+              <button 
+                className="p-2 hover:bg-slate-100 rounded-full" 
+                title="Exporter" 
+                disabled={saving || generatingPDF || !descenteData}
+                onClick={handleGeneratePDF}
+              >
                 <Download className="w-5 h-5 text-slate-600" />
               </button>
               <button className="p-2 hover:bg-slate-100 rounded-full" title="Envoyer par email" disabled={saving || generatingPDF}>
@@ -1270,7 +1216,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
               </button>
             </div>
           </div>
-
+          
           {/* Message d'erreur */}
           {error && (
             <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -1280,7 +1226,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
               </div>
             </div>
           )}
-
+          
           {/* Contenu du modal */}
           <div className="p-6">
             {loading ? (
@@ -1437,7 +1383,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                               )}
                             </div>
                           </div>
-                          
+                         
                           {/* Section Cartographie */}
                           {descenteData && (
                             <div className="mt-6">
@@ -1456,7 +1402,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                                   <ChevronDown className="w-5 h-5 text-slate-600" />
                                 }
                               </div>
-                              
+                             
                               {expandedSections.carte && (
                                 <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-slate-50 to-slate-100">
@@ -1490,7 +1436,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                                       </button>
                                     </div>
                                   </div>
-                                  
+                                 
                                   <div
                                     ref={mapContainerRef}
                                     className="h-[400px] w-full bg-slate-100 relative z-0"
@@ -1504,7 +1450,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                                       </div>
                                     )}
                                   </div>
-                                  
+                                 
                                   {/* Informations de coordonnées */}
                                   <div className="p-4 border-t border-slate-200 bg-slate-50">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -1552,7 +1498,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                     </div>
                   )}
                 </div>
-
                 {/* Section 2: Informations du rendez-vous */}
                 <div className="mb-6">
                   <div
@@ -1622,7 +1567,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                     </div>
                   )}
                 </div>
-
                 {/* Section 3: Formulaire du procès-verbal */}
                 <div>
                   <div
@@ -1691,7 +1635,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                           />
                         </div>
                       </div>
-
                       {/* Informations du convoqué */}
                       <h4 className="text-md font-semibold text-slate-800 mt-6 mb-4">Informations du Convoqué</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1759,7 +1702,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                           />
                         </div>
                       </div>
-
                       {/* Informations terrain */}
                       <h4 className="text-md font-semibold text-slate-800 mt-6 mb-4">Informations du Terrain</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1812,7 +1754,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                           />
                         </div>
                       </div>
-
                       {/* Dossiers */}
                       {availableDossiers.length > 0 && (
                         <div className="mt-6">
@@ -1828,7 +1769,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                               {statutDossier}
                             </div>
                           </div>
-                         
+                        
                           <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                             <p className="text-sm text-slate-600 mb-3">
                               Dossiers requis selon la descente : {availableDossiers.length} document(s)
@@ -1878,7 +1819,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                                 </div>
                               ))}
                             </div>
-                           
+                          
                             {/* Résumé des dossiers */}
                             <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200">
                               <div className="grid grid-cols-2 gap-4">
@@ -1895,7 +1836,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                                   <div className="text-sm text-slate-600">Dossiers manquants</div>
                                 </div>
                               </div>
-                             
+                            
                               {/* Message d'alerte si incomplet */}
                               {statutDossier === 'Incomplet' && (
                                 <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded">
@@ -1911,7 +1852,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                           </div>
                         </div>
                       )}
-
                       {/* Délai complément dossier */}
                       <div className="mt-6">
                         <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1933,7 +1873,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                           </p>
                         )}
                       </div>
-
                       {/* Conclusion */}
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1953,7 +1892,6 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
               </>
             )}
           </div>
-
           {/* Pied du modal */}
           <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6 flex justify-between items-center">
             <div className="flex items-center gap-4">
@@ -1966,7 +1904,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                   Toutes les informations seront enregistrées et le rendez-vous sera marqué comme "Fini"
                 </p>
               </div>
-             
+            
               {availableDossiers.length > 0 && (
                 <div className="flex items-center gap-2">
                   <div className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -1984,7 +1922,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
                 </div>
               )}
             </div>
-           
+          
             <div className="flex gap-3">
               <button
                 onClick={handleCloseFTModal}
@@ -2031,7 +1969,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
           </div>
         </div>
       </div>
-
+      
       {/* Modal de confirmation */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

@@ -1,3 +1,4 @@
+// paiement-content.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Receipt, DollarSign, Calendar, CheckCircle, Clock, XCircle,
@@ -17,7 +18,6 @@ interface AvisPaiement {
   date_ap: string;
   montant: number;
   montant_lettre: string;
-  // Tous les statuts possibles dans la base de données
   statut: 'Payé' | 'En attente' | 'En cours' | 'Retard' | 'Annulé' | 'Partiellement payé' | 'En retard';
   methode_paiement?: string;
   description?: string;
@@ -55,8 +55,472 @@ interface PaiementStats {
   totalMontantRetard: number;
 }
 
-// URL de base de l'API
+interface MiseEnDemeure {
+  id: number;
+  avis_id: number;
+  date_envoi: string;
+  nouvelle_date_paiement: string;
+  nouvelle_heure_paiement?: string;
+  statut: 'envoyée' | 'relancée' | 'annulée';
+  created_at: string;
+  updated_at: string;
+  avis?: AvisPaiement;
+}
+
 const API_BASE_URL = 'http://localhost:3000/api/avis-de-paiement';
+const API_MISE_EN_DEMEURE_URL = 'http://localhost:3000/api/mise-en-demeure';
+
+// Fonction pour charger une image en Base64
+const getImageAsBase64 = async (imagePath: string): Promise<string> => {
+  try {
+    const response = await fetch(imagePath);
+    if (!response.ok) {
+      throw new Error(`Failed to load image: ${imagePath}`);
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Error loading image:', error);
+    return '';
+  }
+};
+
+// Fonction pour formater la date
+const formatDate = (dateString: string): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    
+    // Format: "2 mai 2024"
+    const day = date.getDate();
+    const monthNames = [
+      'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+    ];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    
+    return `${day} ${month} ${year}`;
+  } catch {
+    return dateString;
+  }
+};
+
+// Fonction pour formater le montant avec séparateurs
+const formatMontant = (montant: number): string => {
+  return new Intl.NumberFormat('fr-FR').format(montant);
+};
+
+// Fonction pour formater les montants en lettres (version simplifiée)
+const formatMontantEnLettres = (montant: number): string => {
+  if (montant === 0) return "ZÉRO";
+  
+  const unites = ["", "UN", "DEUX", "TROIS", "QUATRE", "CINQ", "SIX", "SEPT", "HUIT", "NEUF"];
+  const dizaines = ["", "DIX", "VINGT", "TRENTE", "QUARANTE", "CINQUANTE", "SOIXANTE", "SOIXANTE-DIX", "QUATRE-VINGT", "QUATRE-VINGT-DIX"];
+  
+  const millions = Math.floor(montant / 1000000);
+  const milliers = Math.floor((montant % 1000000) / 1000);
+  const reste = montant % 1000;
+  
+  let result = "";
+  
+  // Millions
+  if (millions > 0) {
+    if (millions === 1) {
+      result += "UN MILLION ";
+    } else {
+      // Simplifié : on utilise les unités pour les millions
+      result += `${formatNombreSimple(millions)} MILLIONS `;
+    }
+  }
+  
+  // Milliers
+  if (milliers > 0) {
+    if (milliers === 1) {
+      result += "MILLE ";
+    } else {
+      result += `${formatNombreSimple(milliers)} MILLE `;
+    }
+  }
+  
+  // Centaines
+  if (reste > 0) {
+    const c = Math.floor(reste / 100);
+    const d = Math.floor((reste % 100) / 10);
+    const u = reste % 10;
+    
+    if (c > 0) {
+      if (c === 1) {
+        result += "CENT ";
+      } else {
+        result += `${unites[c]} CENTS `;
+      }
+    }
+    
+    if (d > 0) {
+      result += `${dizaines[d]} `;
+    }
+    
+    if (u > 0) {
+      result += `${unites[u]} `;
+    }
+  }
+  
+  return result.trim();
+};
+
+// Fonction auxiliaire pour formater les nombres simples
+const formatNombreSimple = (n: number): string => {
+  if (n < 10) return ["", "UN", "DEUX", "TROIS", "QUATRE", "CINQ", "SIX", "SEPT", "HUIT", "NEUF"][n];
+  if (n < 100) {
+    const d = Math.floor(n / 10);
+    const u = n % 10;
+    if (u === 0) return ["", "DIX", "VINGT", "TRENTE", "QUARANTE", "CINQUANTE", "SOIXANTE", "SOIXANTE-DIX", "QUATRE-VINGT", "QUATRE-VINGT-DIX"][d];
+    if (d === 1) return ["DIX", "ONZE", "DOUZE", "TREIZE", "QUATORZE", "QUINZE", "SEIZE", "DIX-SEPT", "DIX-HUIT", "DIX-NEUF"][u];
+    return ["", "DIX", "VINGT", "TRENTE", "QUARANTE", "CINQUANTE", "SOIXANTE", "SOIXANTE-DIX", "QUATRE-VINGT", "QUATRE-VINGT-DIX"][d] + "-" + ["", "UN", "DEUX", "TROIS", "QUATRE", "CINQ", "SIX", "SEPT", "HUIT", "NEUF"][u];
+  }
+  return n.toString();
+};
+
+// Fonction pour formater l'heure
+const formatTime = (timeString: string): string => {
+  if (!timeString) return '';
+  // Supprime les secondes si présentes
+  return timeString.split(':').slice(0, 2).join(':');
+};
+
+// Fonction pour générer le PDF de mise en demeure pour paiement
+const generateMiseEnDemeurePaiementPDF = async (
+  avis: AvisPaiement, 
+  nouvelleDate?: string, 
+  nouvelleHeure?: string
+): Promise<boolean> => {
+  try {
+    // Charger jsPDF dynamiquement
+    const jsPDF = (await import('jspdf')).default;
+    
+    // Attendre que html2canvas soit disponible globalement
+    let html2canvas;
+    if (typeof window !== 'undefined') {
+      html2canvas = await import('html2canvas');
+    } else {
+      throw new Error('html2canvas non disponible');
+    }
+
+    // Charger les images en Base64
+    const [headerImage, emblemImage, footerImage] = await Promise.all([
+      getImageAsBase64('/images/header_vm.png'),
+      getImageAsBase64('/images/emblème_vf.png'),
+      getImageAsBase64('/images/footer.png')
+    ]);
+    
+    // Créer un élément div temporaire pour le rendu HTML
+    const pdfContent = document.createElement('div');
+    pdfContent.style.position = 'fixed';
+    pdfContent.style.left = '-9999px';
+    pdfContent.style.top = '0';
+    pdfContent.style.width = '210mm';
+    pdfContent.style.backgroundColor = 'white';
+    pdfContent.style.boxSizing = 'border-box';
+    pdfContent.style.overflow = 'hidden';
+    
+    // Créer un conteneur pour la page unique
+    const page1 = document.createElement('div');
+    page1.className = 'pdf-page pdf-page-1';
+    page1.style.width = '210mm';
+    page1.style.height = '297mm';
+    page1.style.backgroundColor = 'white';
+    page1.style.position = 'relative';
+    page1.style.margin = '0';
+    page1.style.padding = '0';
+    page1.style.boxSizing = 'border-box';
+    
+    // Préparer les informations
+    const dateMiseEnDemeure = nouvelleDate ? formatDate(nouvelleDate) : formatDate(new Date().toISOString());
+    const heureRendezVous = nouvelleHeure || '09:00';
+    
+    // Extraire les montants de l'avis
+    const montantAmende = avis.montant || 0;
+    const montantRedevance = Math.floor(montantAmende * 0.5); // La redevance est 50% de l'amende
+    const montantTotal = montantAmende + montantRedevance;
+    
+    // Formater les montants en lettres
+    const montantAmendeLettres = formatMontantEnLettres(montantAmende);
+    const montantRedevanceLettres = formatMontantEnLettres(montantRedevance);
+    const montantTotalLettres = formatMontantEnLettres(montantTotal);
+    
+    // Appliquer les styles directement
+    const styles = `
+      @media print {
+        @page { margin: 0; size: A4; }
+        body { margin: 0; }
+        .pdf-page { 
+          width: 210mm; 
+          height: 297mm;
+        }
+      }
+      
+      .pdf-header {
+        height: 200px;
+        width: 100%;
+        background-image: url('${headerImage}');
+        background-size: cover;
+        background-repeat: no-repeat;
+        margin-bottom: 20px;
+      }
+      
+      .pdf-emblem {
+        height: 100px;
+        width: 90%;
+        position: relative;
+        top: -160px;
+        background-image: url('${emblemImage}');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center center;
+        margin: 0 auto;
+      }
+      
+      .pdf-footer {
+        height: 250px;
+        background-image: url('${footerImage}');
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-color: transparent;
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+      }
+      
+      .pdf-content {
+        font-family: 'Times New Roman', serif;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #000;
+        position: relative;
+        top: -120px;
+      }
+      
+      .pdf-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      
+      .pdf-table td {
+        vertical-align: top;
+        padding: 2px;
+      }
+      
+      .text-center { text-align: center; }
+      .text-right { text-align: right; }
+      .text-left { text-align: left; }
+      
+      .document-title {
+        font-size: 13px;
+        font-weight: bold;
+        margin: 8mm 0;
+        text-decoration: underline;
+      }
+      
+      .reference {
+        font-size: 11px;
+        margin: 10mm 0 5mm 0;
+        text-align: right;
+        font-weight: bold;
+      }
+      
+      .content-block {
+        margin-bottom: 4mm;
+        padding: 20px 50px;
+      }
+      
+      .content-text {
+        text-align: justify;
+        margin-bottom: 10px;
+        line-height: 1.6;
+      }
+      
+      .signature-section {
+        margin-top: 20mm;
+        padding: 0 50px;
+        width: 100%;
+      }
+      
+      .montant-section {
+        margin: 8mm 0;
+        padding: 10px;
+        line-height: 1.8;
+      }
+      
+      .montant-important {
+        font-weight: bold;
+        margin: 5px 0;
+      }
+      
+      .bold-text {
+        font-weight: bold;
+      }
+      
+      .underline-text {
+        text-decoration: underline;
+      }
+      
+      .mb-3 {
+        margin-bottom: 12px;
+      }
+      
+      .mt-4 {
+        margin-top: 16px;
+      }
+    `;
+    
+    // Contenu de la page 1 (Mise en demeure pour paiement)
+    page1.innerHTML = `
+      <style>${styles}</style>
+      <div class="pdf-header"></div>
+      <div class="pdf-emblem"></div>
+      
+      <div class="pdf-content">
+        <table class="pdf-table">
+          <tr>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+              <strong>MINISTÈRE DE LA DÉCENTRALISATION<br>ET DE L'AMÉNAGEMENT DU TERRITOIRE<br>
+              --------------------<br>
+              SECRÉTARIAT GÉNÉRAL<br>
+              --------------------<br>
+              <em>DIRECTION GÉNÉRALE</em><br>
+              <em>DE L'AUTORITÉ POUR LA PROTECTION CONTRE LES INONDATIONS</em><br>
+              <em>DE LA PLAINE D'ANTANANARIVO</em><br>
+              --------------------</strong>
+            </td>
+            <td style="width: 10%;"></td>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+              Antananarivo, le ${dateMiseEnDemeure}<br><br>
+              <strong>LE DIRECTEUR GÉNÉRAL</strong><br><br>
+              À l'attention de<br><br>
+              <strong>${avis.ft?.nom_convoquee || avis.ft?.nom_personne_r || 'Madame RASOLOFONIAINA Baholiarinoro Marie Sylvie'}</strong><br>
+              ${avis.ft?.commune ? `Commune: ${avis.ft.commune}` : 'Demeurant au Lot IVY 19 Anosipatrana Est'}<br>
+              ${avis.ft?.fokontany ? `Fokontany: ${avis.ft.fokontany}` : ''}
+            </td>
+          </tr>
+        </table>
+
+       
+
+        <div class="document-title text-center">
+         <strong>CONVOCATION ET MISE EN DEMEURE POUR PAIEMENT</strong>
+
+        </div>
+         <div class="reference">
+         <strong>OBJET :</strong> Rappel de paiement – Avis de mise en demeure<br>
+                   
+          <strong>RÉFÉRENCE :</strong> Avis de paiement n°${avis.num_ap || '077/24'} et n°${avis.num_ap || '078/24'} en date du ${formatDate(avis.date_ap || '2024-10-14')}
+        </div>
+        <div class="content-block">
+          <p class="content-text">
+            <strong>Madame,</strong>
+          </p>
+          
+          <p class="content-text">
+            Faisant suite à l'avis de paiement cité en référence, vous êtes contrainte au paiement d'une amende d'un montant de 
+            <span class="bold-text"> ${montantAmendeLettres.toUpperCase()} ARIARY (${formatMontant(montantAmende)} Ar)</span>, 
+            et de la redevance d'un montant de 
+            <span class="bold-text"> ${montantRedevanceLettres.toUpperCase()} ARIARY (${formatMontant(montantRedevance)} Ar)</span>. 
+            Nous vous rappelons que ces montants restent à ce jour impayés.
+          </p>
+          
+          <p class="content-text">
+            <strong>En conséquence, la présente convocation vous est adressée pour vous mettre en demeure de vous présenter dans les locaux de l'APIPA le 
+            ${nouvelleDate ? formatDate(nouvelleDate) : '__________'} à ${nouvelleHeure || '__________'} 
+            afin de régulariser votre situation dans les quinze jours.</strong>
+          </p>
+          
+          <p class="content-text">
+            En l'absence de règlement ou de justification de votre part à l'échéance mentionnée, des poursuites seront engagées à votre encontre et ce, dans le respect des dispositions légales et réglementaires en vigueur.
+          </p>
+          
+          <p class="content-text">
+            Nous vous remercions de l'attention que vous portez à ce rappel et des obligations dues à cet effet pour consolider l'importance de régulariser votre situation dans les délais impartis.
+          </p>
+          
+          
+          <p class="content-text">
+            <strong>Pièces Jointes :</strong> Avis de paiement n°${avis.num_ap || '077/24'} et n°${avis.num_ap || '078/24'} en date du ${formatDate(avis.date_ap || '2024-10-14')}
+          </p>
+        </div>
+
+        <table class="signature-section">
+          <tr>
+            <td style="width: 60%;"></td>
+            <td style="width: 40%; text-align: right;">
+              <em>Le Directeur Général,</em><br><br><br><br>
+              <strong>_________________________</strong><br>
+              <em>Signature et cachet</em>
+            </td>
+          </tr>
+        </table>
+        
+        <div class="pdf-footer"></div>
+      </div>
+    `;
+    
+    // Ajouter la page au conteneur principal
+    pdfContent.appendChild(page1);
+    
+    // Ajouter le div au body pour le rendu
+    document.body.appendChild(pdfContent);
+    
+    // Attendre le rendu complet (images chargées)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Créer le PDF avec jsPDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    
+    // Capturer et ajouter la page
+    const canvas1 = await html2canvas.default(page1, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      width: 793,
+      height: 1122,
+      windowWidth: 793,
+      windowHeight: 1122
+    });
+    
+    const imgData1 = canvas1.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    
+    // Télécharger le PDF
+    const fileName = `Mise_en_Demeure_Paiement_${avis.num_ap || avis.id}_${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(fileName);
+    
+    // Nettoyer le div temporaire
+    if (pdfContent.parentNode) {
+      pdfContent.parentNode.removeChild(pdfContent);
+    }
+    
+    return true;
+    
+  } catch (error) {
+    console.error('Erreur lors de la génération du PDF:', error);
+    throw new Error('Erreur lors de la génération du PDF');
+  }
+};
 
 export default function PaiementContent() {
   const [avisList, setAvisList] = useState<AvisPaiement[]>([]);
@@ -86,24 +550,59 @@ export default function PaiementContent() {
   const [showMiseEnDemeureModal, setShowMiseEnDemeureModal] = useState(false);
   const [selectedAvisForMED, setSelectedAvisForMED] = useState<AvisPaiement | null>(null);
   const [newPaymentDate, setNewPaymentDate] = useState('');
+  const [newPaymentTime, setNewPaymentTime] = useState('');
+  const [retardPaiements, setRetardPaiements] = useState<AvisPaiement[]>([]);
+  const [miseEnDemeureList, setMiseEnDemeureList] = useState<MiseEnDemeure[]>([]);
+  const [loadingMED, setLoadingMED] = useState(false);
 
   // Fonction pour vérifier si un avis peut être payé
-  // Seulement pour les avis qui ne sont pas encore complètement payés et non annulés
   const canBePaid = (avis: AvisPaiement) => {
-    // Les avis qui peuvent être payés :
-    // 1. En cours
-    // 2. Partiellement payé (pour compléter)
-    // 3. En attente
-    // 4. Retard/En retard (pour régulariser)
     const paiementPossible = 
       avis.statut === 'En cours' || 
       avis.statut === 'En attente' || 
       avis.statut === 'Retard' || 
       avis.statut === 'En retard';
     
-    // Ne pas afficher pour les avis déjà payés ou annulés
     return paiementPossible && avis.statut !== 'Payé' && avis.statut !== 'Annulé';
   };
+
+  // Fonction pour calculer le nombre de jours de retard
+  const calculerJoursRetard = (datePaiement: string) => {
+    if (!datePaiement) return 0;
+    
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+    
+    const dateFin = new Date(datePaiement);
+    dateFin.setHours(0, 0, 0, 0);
+    
+    const diffTime = aujourdhui.getTime() - dateFin.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, diffDays);
+  };
+
+  // Fonction pour vérifier les paiements en retard
+  const checkRetardPaiements = useCallback((avisList: AvisPaiement[]) => {
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+    
+    const paiementsRetard = avisList.filter(avis => {
+      if (!avis.fin_premier_paiement || avis.statut === 'Payé' || avis.statut === 'Annulé') {
+        return false;
+      }
+      
+      const dateFinPaiement = new Date(avis.fin_premier_paiement);
+      dateFinPaiement.setHours(0, 0, 0, 0);
+      
+      const diffTime = aujourdhui.getTime() - dateFinPaiement.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      return diffDays > 3;
+    });
+    
+    setRetardPaiements(paiementsRetard);
+  }, []);
 
   // Récupérer la liste des avis de paiement
   const fetchAvisList = useCallback(async () => {
@@ -122,9 +621,7 @@ export default function PaiementContent() {
         params.append('q', searchTerm);
       }
       
-      // Si un filtre de statut est sélectionné, l'ajouter aux paramètres
       if (filtreStatut !== 'tous') {
-        // Convertir les noms affichés en noms de base de données si nécessaire
         let statutApi = filtreStatut;
         if (filtreStatut === 'En retard') statutApi = 'Retard';
         params.append('statut', statutApi);
@@ -144,7 +641,6 @@ export default function PaiementContent() {
       if (result.success) {
         const avisData = result.data || [];
         
-        // Filtrer par recherche texte si nécessaire (côté client)
         let filteredData = avisData;
         if (searchTerm.trim()) {
           const searchLower = searchTerm.toLowerCase().trim();
@@ -159,6 +655,9 @@ export default function PaiementContent() {
         
         setAvisList(filteredData);
         
+        // Vérifier les paiements en retard
+        checkRetardPaiements(filteredData);
+        
         // Calculer les statistiques
         calculerStatistiques(filteredData);
         
@@ -171,12 +670,39 @@ export default function PaiementContent() {
       console.error('Erreur lors du chargement des avis de paiement:', err);
       setError(err.message);
       setAvisList([]);
+      setRetardPaiements([]);
       setTotalCount(0);
       setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchTerm, filtreStatut]);
+  }, [page, pageSize, searchTerm, filtreStatut, checkRetardPaiements]);
+
+  // Récupérer la liste des mises en demeure
+  const fetchMiseEnDemeureList = useCallback(async () => {
+    try {
+      setLoadingMED(true);
+      
+      const response = await fetch(`${API_MISE_EN_DEMEURE_URL}`);
+      
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setMiseEnDemeureList(result.data || []);
+      } else {
+        throw new Error(result.message || 'Erreur lors de la récupération des mises en demeure');
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du chargement des mises en demeure:', err);
+      setMiseEnDemeureList([]);
+    } finally {
+      setLoadingMED(false);
+    }
+  }, []);
 
   // Calculer les statistiques basées sur le statut réel
   const calculerStatistiques = (avisList: AvisPaiement[]) => {
@@ -199,7 +725,7 @@ export default function PaiementContent() {
           statsCalcul.totalMontantEnAttente += avis.montant;
           break;
         case 'En cours':
-        case 'Partiellement payé': // Inclure "Partiellement payé" dans "En cours" pour les stats
+        case 'Partiellement payé':
           statsCalcul.totalEnCours++;
           statsCalcul.totalMontantEnCours += avis.montant;
           break;
@@ -224,7 +750,8 @@ export default function PaiementContent() {
   // Initial fetch
   useEffect(() => {
     fetchAvisList();
-  }, [fetchAvisList]);
+    fetchMiseEnDemeureList();
+  }, [fetchAvisList, fetchMiseEnDemeureList]);
 
   // Gérer le délai de recherche
   useEffect(() => {
@@ -269,7 +796,7 @@ export default function PaiementContent() {
       
       if (response.ok && result.success) {
         alert('Avis annulé avec succès!');
-        fetchAvisList(); // Rafraîchir la liste
+        fetchAvisList();
       } else {
         throw new Error(result.message || 'Erreur lors de l\'annulation');
       }
@@ -301,46 +828,87 @@ export default function PaiementContent() {
     }
   };
 
+  // Fonction utilitaire pour formater la date et l'heure
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Date invalide';
+      return date.toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
   // Ouvrir le modal Mise en Demeure
   const handleOpenMiseEnDemeureModal = (avis: AvisPaiement) => {
     setSelectedAvisForMED(avis);
-    setNewPaymentDate('');
+    
+    // Définir la date par défaut (7 jours à partir d'aujourd'hui)
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 7);
+    setNewPaymentDate(defaultDate.toISOString().split('T')[0]);
+    
+    // Définir l'heure par défaut (09:00)
+    setNewPaymentTime('09:00');
+    
     setShowMiseEnDemeureModal(true);
   };
+// Dans PaiementContent.tsx, modifiez la fonction handleSendMiseEnDemeure
+const handleSendMiseEnDemeure = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!newPaymentDate || !selectedAvisForMED) {
+    alert('Veuillez sélectionner une date et une heure');
+    return;
+  }
 
-  // Envoyer la mise en demeure
-  const handleSendMiseEnDemeure = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPaymentDate || !selectedAvisForMED) {
-      alert('Veuillez sélectionner une date');
-      return;
-    }
+  try {
+    const miseEnDemeureData = {
+      nouvelle_date_paiement: newPaymentDate,
+      nouvelle_heure_paiement: newPaymentTime || '09:00'
+    };
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/${selectedAvisForMED.id}/mise-en-demeure`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nouvelle_date_paiement: newPaymentDate,
-        })
-      });
+    // Utiliser la route correcte : /api/avis-de-paiement/{id}/mise-en-demeure
+    const response = await fetch(`${API_BASE_URL}/${selectedAvisForMED.id}/mise-en-demeure`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(miseEnDemeureData)
+    });
 
-      const result = await response.json();
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      // Générer le PDF de mise en demeure
+      await generateMiseEnDemeurePaiementPDF(
+        selectedAvisForMED, 
+        newPaymentDate, 
+        newPaymentTime || '09:00'
+      );
       
-      if (response.ok && result.success) {
-        alert('Mise en demeure envoyée avec succès!');
-        setShowMiseEnDemeureModal(false);
-        setSelectedAvisForMED(null);
-        fetchAvisList(); // Rafraîchir la liste
-      } else {
-        throw new Error(result.message || 'Erreur lors de l\'envoi de la mise en demeure');
-      }
-    } catch (error: any) {
-      alert(`Erreur: ${error.message}`);
+      alert('Mise en demeure envoyée avec succès et PDF généré!');
+      setShowMiseEnDemeureModal(false);
+      setSelectedAvisForMED(null);
+      setNewPaymentDate('');
+      setNewPaymentTime('');
+      
+      // Rafraîchir la liste des avis
+      fetchAvisList();
+      
+    } else {
+      throw new Error(result.message || 'Erreur lors de l\'envoi de la mise en demeure');
     }
-  };
+  } catch (error: any) {
+    alert(`Erreur: ${error.message}`);
+  }
+};
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -395,24 +963,6 @@ export default function PaiementContent() {
       default:
         return <Wallet className="w-4 h-4" />;
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const formatMontant = (montant: number) => {
-    return new Intl.NumberFormat('fr-FR').format(montant);
   };
 
   const handleViewDetails = (avis: AvisPaiement) => {
@@ -579,7 +1129,6 @@ export default function PaiementContent() {
                           <DownloadIcon className="w-4 h-4" />
                         </button>
                         
-                        {/* Bouton "Passer au paiement" - seulement pour les avis qui peuvent être payés */}
                         {peutEtrePaye && (
                           <button
                             onClick={() => handleOpenPasserPaiementModal(avis)}
@@ -590,7 +1139,6 @@ export default function PaiementContent() {
                           </button>
                         )}
 
-                        {/* Bouton "Mise en demeure" - seulement pour les avis en retard */}
                         {(avis.statut === 'Retard' || avis.statut === 'En retard') && (
                           <button
                             onClick={() => handleOpenMiseEnDemeureModal(avis)}
@@ -608,6 +1156,262 @@ export default function PaiementContent() {
             </tbody>
           </table>
         </div>
+      </div>
+    );
+  };
+
+  // Fonction pour rendre le tableau des retards
+  const renderTableauRetards = () => {
+    if (retardPaiements.length === 0) return null;
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-red-800 flex items-center">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            Paiements en Retard (3+ jours)
+            <span className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-800 rounded font-medium">
+              {retardPaiements.length} avis
+            </span>
+          </h3>
+        </div>
+        
+        <div className="overflow-x-auto rounded-lg border border-red-200">
+          <table className="min-w-full divide-y divide-red-100">
+            <thead className="bg-red-50">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  N° Avis
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  Référence FT
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  Date Limite
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  Jours Retard
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  Montant
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  Contact
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-red-700 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-red-100">
+              {retardPaiements.map((avis) => {
+                const joursRetard = calculerJoursRetard(avis.fin_premier_paiement || '');
+                
+                return (
+                  <tr key={avis.id} className="hover:bg-red-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center mr-3">
+                          <AlertCircle className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">{avis.num_ap}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-slate-900">
+                        {avis.ft?.reference_ft || `FT-${avis.idft}`}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {avis.ft?.nom_convoquee || 'Non spécifié'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-red-400" />
+                        <span className="text-sm text-slate-900">
+                          {formatDate(avis.fin_premier_paiement || '')}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                        joursRetard > 7 
+                          ? 'bg-red-100 text-red-800' 
+                          : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        +{joursRetard} jours
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-lg font-bold text-red-900">
+                        {formatMontant(avis.montant)} Ar
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-slate-900">
+                        {avis.contact || 'N/A'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {avis.ft?.commune || 'N/A'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleOpenMiseEnDemeureModal(avis)}
+                          className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                          title="Envoyer mise en demeure"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenPasserPaiementModal(avis)}
+                          className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors"
+                          title="Payer maintenant"
+                        >
+                          <DollarSign className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleViewDetails(avis)}
+                          className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                          title="Voir détails"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Fonction pour rendre le tableau des mises en demeure
+  const renderTableauMiseEnDemeure = () => {
+    if (miseEnDemeureList.length === 0) return null;
+
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-purple-200 p-6 mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-purple-800 flex items-center">
+            <Mail className="w-5 h-5 mr-2" />
+            Historique des Mises en Demeure
+            <span className="ml-2 px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded font-medium">
+              {miseEnDemeureList.length} envois
+            </span>
+          </h3>
+        </div>
+        
+        {loadingMED ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-2"></div>
+              <p className="text-slate-600 text-sm">Chargement des mises en demeure...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-purple-200">
+            <table className="min-w-full divide-y divide-purple-100">
+              <thead className="bg-purple-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    Date Envoi
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    N° Avis
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    Référence FT
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    Nouvelle Date Paiement
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    Statut
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-purple-700 uppercase tracking-wider">
+                    Montant
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-purple-100">
+                {miseEnDemeureList.map((med) => (
+                  <tr key={med.id} className="hover:bg-purple-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-purple-400" />
+                        <span className="text-sm text-slate-900">
+                          {formatDateTime(med.date_envoi)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-slate-900">
+                        {med.avis?.num_ap || `AP-${med.avis_id}`}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-slate-900">
+                        {med.avis?.ft?.reference_ft || `FT-${med.avis?.idft || 'N/A'}`}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {med.avis?.ft?.nom_convoquee || 'Non spécifié'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-emerald-400" />
+                          <span className="text-sm font-medium text-emerald-900">
+                            {formatDate(med.nouvelle_date_paiement)}
+                          </span>
+                        </div>
+                        {med.nouvelle_heure_paiement && (
+                          <div className="text-xs text-slate-600 pl-6">
+                            à {med.nouvelle_heure_paiement}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs rounded font-medium ${
+                        med.statut === 'envoyée' 
+                          ? 'bg-blue-100 text-blue-800'
+                          : med.statut === 'relancée'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {med.statut.charAt(0).toUpperCase() + med.statut.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-slate-900">
+                        {med.avis?.contact || 'N/A'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {med.avis?.ft?.commune || 'N/A'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-bold text-purple-900">
+                        {med.avis ? formatMontant(med.avis.montant) : 'N/A'} Ar
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   };
@@ -721,6 +1525,9 @@ export default function PaiementContent() {
         </div>
       </div>
 
+      {/* Tableau des paiements en retard */}
+      {renderTableauRetards()}
+
       {/* Barre de recherche et filtres */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -782,7 +1589,10 @@ export default function PaiementContent() {
             {/* Bouton actualiser */}
             <button 
               className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-              onClick={fetchAvisList}
+              onClick={() => {
+                fetchAvisList();
+                fetchMiseEnDemeureList();
+              }}
             >
               <RefreshCw className="w-4 h-4" />
               Actualiser
@@ -905,6 +1715,9 @@ export default function PaiementContent() {
           </>
         )}
       </div>
+
+      {/* Tableau des mises en demeure */}
+      {renderTableauMiseEnDemeure()}
 
       {/* Modal de détails de l'avis */}
       {showDetailsModal && selectedAvis && (
@@ -1040,14 +1853,8 @@ export default function PaiementContent() {
                     <p className="text-sm text-slate-600">Contact</p>
                     <p className="font-medium text-slate-900">{selectedAvis.contact || 'N/A'}</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Créé le</p>
-                    <p className="font-medium text-slate-900">{formatDate(selectedAvis.created_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Mis à jour le</p>
-                    <p className="font-medium text-slate-900">{formatDate(selectedAvis.updated_at) || 'N/A'}</p>
-                  </div>
+                 
+
                 </div>
               </div>
 
@@ -1232,60 +2039,46 @@ export default function PaiementContent() {
                 </div>
               )}
 
-              {/* Détails Additionnels */}
-              <div className="bg-slate-50 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Détails Additionnels</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-slate-600">Destination</p>
-                    <p className="font-medium text-slate-900">{selectedAvisForMED.destination || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Contact</p>
-                    <p className="font-medium text-slate-900">{selectedAvisForMED.contact || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Créé le</p>
-                    <p className="font-medium text-slate-900">{formatDate(selectedAvisForMED.created_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-600">Mis à jour le</p>
-                    <p className="font-medium text-slate-900">{formatDate(selectedAvisForMED.updated_at) || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
 
-              {/* Description */}
-              {selectedAvisForMED.description && (
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Description</h3>
-                  <div className="bg-white border border-slate-200 rounded-lg p-4">
-                    <p className="text-slate-700">{selectedAvisForMED.description}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Formulaire pour nouvelle date de paiement */}
+              {/* Formulaire pour nouvelle date et heure de paiement */}
               <div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Nouvelle Date de Paiement</h3>
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Nouvelle Date et Heure de Paiement</h3>
                 <form onSubmit={handleSendMiseEnDemeure} className="space-y-4">
-                  <div>
-                    <label htmlFor="newPaymentDate" className="block text-sm font-medium text-slate-700 mb-1">
-                      Sélectionnez une nouvelle date de paiement
-                    </label>
-                    <input
-                      type="date"
-                      id="newPaymentDate"
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                      value={newPaymentDate}
-                      onChange={(e) => setNewPaymentDate(e.target.value)}
-                      required
-                      min={new Date().toISOString().split('T')[0]} // Date minimum = aujourd'hui
-                    />
-                    <p className="text-xs text-slate-500 mt-1">
-                      La date doit être dans le futur pour que l'avis passe en statut "En attente"
-                    </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="newPaymentDate" className="block text-sm font-medium text-slate-700 mb-1">
+                        Nouvelle date de paiement *
+                      </label>
+                      <input
+                        type="date"
+                        id="newPaymentDate"
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                        value={newPaymentDate}
+                        onChange={(e) => setNewPaymentDate(e.target.value)}
+                        required
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        La date doit être dans le futur
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="newPaymentTime" className="block text-sm font-medium text-slate-700 mb-1">
+                        Heure de paiement
+                      </label>
+                      <input
+                        type="time"
+                        id="newPaymentTime"
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                        value={newPaymentTime}
+                        onChange={(e) => setNewPaymentTime(e.target.value)}
+                      />
+                      <p className="text-xs text-slate-500 mt-1">
+                        Heure limite pour le paiement
+                      </p>
+                    </div>
                   </div>
+                  
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"
@@ -1320,7 +2113,8 @@ export default function PaiementContent() {
           onSuccess={() => {
             setShowPasserPaiementModal(false);
             setSelectedAvisForPasserPaiement(null);
-            fetchAvisList(); // Rafraîchir la liste
+            fetchAvisList();
+            fetchMiseEnDemeureList();
           }}
         />
       )}

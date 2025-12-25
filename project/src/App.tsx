@@ -109,8 +109,7 @@ function Header() {
                   }}
                 />
                 <div>
-                  <h1 className="text-lg font-bold text-gray-800">SADEXLST</h1>
-                  <p className="text-xs text-gray-600">Surveillance & Contrôle</p>
+                  <h1 className="text-lg font-bold text-gray-800">SADEX</h1>
                 </div>
               </div>
 
