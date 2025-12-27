@@ -259,33 +259,33 @@ function AppContent() {
       {/* Contenu principal - occupe tout l'espace restant */}
       <main className="flex-1 min-h-0 overflow-auto">
         <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          <Route path="/dashboard" element={
-            <ProtectedRoute requiredRole="admin">
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/agent-dashboard" element={
-            <ProtectedRoute requiredRole="agent">
-              <AgentDashboard />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/" element={
-            <ProtectedRoute>
-              {/* Redirection automatique selon le type d'utilisateur */}
-              {localStorage.getItem('userType') === 'admin' 
-                ? <Navigate to="/dashboard" /> 
-                : <Navigate to="/agent-dashboard" />
-              }
-            </ProtectedRoute>
-          } />
-          
-          {/* Route 404 */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+  {/* Page de Login accessible à tous */}
+  <Route path="/login" element={<Login />} />
+  
+  {/* Protection des routes Admin */}
+  <Route path="/dashboard" element={
+    <ProtectedRoute requiredRole="admin">
+      <Dashboard />
+    </ProtectedRoute>
+  } />
+  
+  {/* Protection des routes Agent */}
+  <Route path="/agent-dashboard" element={
+    <ProtectedRoute requiredRole="agent">
+      <AgentDashboard />
+    </ProtectedRoute>
+  } />
+  
+  {/* Route racine : Redirige vers le bon dashboard ou vers login */}
+  <Route path="/" element={
+    localStorage.getItem('isAuthenticated') === 'true' 
+      ? <Navigate to={localStorage.getItem('userType') === 'admin' ? '/dashboard' : '/agent-dashboard'} replace />
+      : <Navigate to="/login" replace />
+  } />
+  
+  {/* Redirection automatique pour toute URL inconnue vers la racine */}
+  <Route path="*" element={<Navigate to="/" replace />} />
+</Routes>
       </main>
       
       {/* Toast notifications */}

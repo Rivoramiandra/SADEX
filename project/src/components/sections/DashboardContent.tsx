@@ -1,32 +1,105 @@
-import { TrendingUp, Users, AlertTriangle, CheckCircle, MapPin, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+
+import { 
+
+  DollarSign,
+  Receipt,
+  ClipboardCheck,
+  Search
+} from 'lucide-react';
+
+// Import des composants pour chaque section
+import DescenteDashboardComponent from '../DescenteDashboard';
+import FTDashboard from '../FtDashboard';
+import AvisPaiementDashboard from '../AvisPaiementDashboard';
+import PaiementDashboard from '../PaiementDashboard';
+ // À créer
 
 export default function DashboardContent() {
+  const [activeComponent, setActiveComponent] = useState('descente');
+
+  // Cartes statistiques comme boutons
   const stats = [
-    { label: 'Zones à risque', value: '24', icon: AlertTriangle, color: 'from-red-500 to-orange-500', change: '+3' },
-    { label: 'Permis délivrés', value: '156', icon: CheckCircle, color: 'from-green-500 to-emerald-500', change: '+12' },
-    { label: 'Descentes terrain', value: '42', icon: MapPin, color: 'from-blue-500 to-cyan-500', change: '+8' },
-    { label: 'Rapports en attente', value: '18', icon: FileText, color: 'from-violet-500 to-purple-500', change: '-5' },
+    { 
+      key: 'descente',
+      label: 'Descentes réalisées', 
+      value: '156', 
+      icon: Search, 
+      color: 'from-blue-500 to-cyan-500', 
+      change: '+12' 
+    },
+    { 
+      key: 'ft',
+      label: 'Fiches techniques', 
+      value: '89', 
+      icon: ClipboardCheck, 
+      color: 'from-emerald-500 to-green-500', 
+      change: '+8' 
+    },
+    { 
+      key: 'avis',
+      label: 'Avis de paiement', 
+      value: '42', 
+      icon: Receipt, 
+      color: 'from-violet-500 to-purple-500', 
+      change: '+5' 
+    },
+    { 
+      key: 'paiement',
+      label: 'Paiements validés', 
+      value: '38', 
+      icon: DollarSign, 
+      color: 'from-amber-500 to-orange-500', 
+      change: '+6' 
+    },
   ];
 
+  // Fonction pour rendre le composant actif
+  const renderActiveComponent = () => {
+    switch (activeComponent) {
+      case 'descente':
+        return <DescenteDashboardComponent />;
+      case 'ft':
+        return <FTDashboard />;
+      case 'avis':
+        return <AvisPaiementDashboard />;
+      case 'paiement':
+        return <PaiementDashboard />;
+      default:
+        return <DescenteDashboardComponent />;
+    }
+  };
+
   const recentActivities = [
-    { type: 'Permis', title: 'Construction résidentielle - Lot 32', status: 'Approuvé', time: 'Il y a 2h', color: 'green' },
-    { type: 'Descente', title: 'Zone inondable Secteur B', status: 'En cours', time: 'Il y a 4h', color: 'blue' },
-    { type: 'Alerte', title: 'Risque élevé Plaine Nord', status: 'Urgent', time: 'Il y a 6h', color: 'red' },
-    { type: 'Rapport', title: 'Évaluation mensuelle', status: 'Soumis', time: 'Hier', color: 'violet' },
+    { type: 'Descente', title: 'Contrôle secteur industriel Nord', status: 'Terminé', time: 'Il y a 2h', color: 'blue' },
+    { type: 'FT', title: 'Fiche technique #FT-2024-0456', status: 'En attente', time: 'Il y a 4h', color: 'emerald' },
+    { type: 'Paiement', title: 'Avis #AV-2024-0789', status: 'Payé', time: 'Il y a 6h', color: 'amber' },
+    { type: 'Alerte', title: 'Descente urgente Zone Est', status: 'Planifié', time: 'Demain', color: 'red' },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-slate-900 mb-2">Tableau de bord</h1>
-        <p className="text-slate-600">Vue d'ensemble de la gestion environnementale et urbaine</p>
+        <p className="text-slate-600">Vue d'ensemble de la gestion des opérations terrain</p>
       </div>
 
+      {/* Cartes statistiques comme boutons */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => {
+        {stats.map((stat) => {
           const Icon = stat.icon;
+          const isActive = activeComponent === stat.key;
+          
           return (
-            <div key={index} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
+            <button
+              key={stat.key}
+              onClick={() => setActiveComponent(stat.key)}
+              className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-all duration-200 text-left ${
+                isActive 
+                  ? 'border-blue-500 ring-2 ring-blue-100' 
+                  : 'border-slate-200 hover:border-blue-300'
+              }`}
+            >
               <div className="flex items-start justify-between mb-4">
                 <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center shadow-lg`}>
                   <Icon className="w-6 h-6 text-white" />
@@ -36,67 +109,23 @@ export default function DashboardContent() {
                 </span>
               </div>
               <div className="text-3xl font-bold text-slate-900 mb-1">{stat.value}</div>
-              <div className="text-sm text-slate-600">{stat.label}</div>
-            </div>
+              <div className="text-sm text-slate-600 flex items-center justify-between">
+                <span>{stat.label}</span>
+                {isActive && (
+                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                )}
+              </div>
+            </button>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900">Activités récentes</h2>
-            <TrendingUp className="w-5 h-5 text-slate-400" />
-          </div>
-          <div className="space-y-4">
-            {recentActivities.map((activity, index) => (
-              <div key={index} className="flex items-start gap-4 p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
-                <div className={`w-2 h-2 rounded-full mt-2 bg-${activity.color}-500`} />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">{activity.type}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full bg-${activity.color}-100 text-${activity.color}-700`}>
-                      {activity.status}
-                    </span>
-                  </div>
-                  <div className="font-medium text-slate-900">{activity.title}</div>
-                  <div className="text-sm text-slate-500 mt-1">{activity.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900">Zones prioritaires</h2>
-            <Users className="w-5 h-5 text-slate-400" />
-          </div>
-          <div className="space-y-4">
-            {[
-              { zone: 'Plaine Nord', risk: 'Élevé', progress: 75, color: 'red' },
-              { zone: 'Secteur Centre', risk: 'Moyen', progress: 50, color: 'orange' },
-              { zone: 'Zone Est', risk: 'Faible', progress: 30, color: 'green' },
-              { zone: 'Périphérie Sud', risk: 'Moyen', progress: 60, color: 'orange' },
-            ].map((zone, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-slate-900">{zone.zone}</span>
-                  <span className={`text-xs px-2 py-1 rounded-full bg-${zone.color}-100 text-${zone.color}-700 font-semibold`}>
-                    {zone.risk}
-                  </span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                  <div
-                    className={`h-full bg-gradient-to-r from-${zone.color}-500 to-${zone.color}-600 rounded-full transition-all duration-500`}
-                    style={{ width: `${zone.progress}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Section principale qui affiche le composant sélectionné */}
+      <div>
+        {renderActiveComponent()}
       </div>
+
+      
     </div>
   );
 }

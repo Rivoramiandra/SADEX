@@ -294,7 +294,7 @@ const generateMiseEnDemeurePaiementPDF = async (
         background-repeat: no-repeat;
         background-position: center center;
         background-color: transparent;
-        position: absolute;
+        position:relative;
         bottom: 0;
         width: 100%;
       }
@@ -348,9 +348,10 @@ const generateMiseEnDemeurePaiementPDF = async (
       }
       
       .signature-section {
-        margin-top: 20mm;
+        margin-top: 10mm;
         padding: 0 50px;
         width: 100%;
+        width: 90%;
       }
       
       .montant-section {
@@ -418,15 +419,8 @@ const generateMiseEnDemeurePaiementPDF = async (
          <strong>CONVOCATION ET MISE EN DEMEURE POUR PAIEMENT</strong>
 
         </div>
-         <div class="reference">
-         <strong>OBJET :</strong> Rappel de paiement – Avis de mise en demeure<br>
-                   
-          <strong>RÉFÉRENCE :</strong> Avis de paiement n°${avis.num_ap || '077/24'} et n°${avis.num_ap || '078/24'} en date du ${formatDate(avis.date_ap || '2024-10-14')}
-        </div>
         <div class="content-block">
-          <p class="content-text">
-            <strong>Madame,</strong>
-          </p>
+          
           
           <p class="content-text">
             Faisant suite à l'avis de paiement cité en référence, vous êtes contrainte au paiement d'une amende d'un montant de 
@@ -1429,101 +1423,7 @@ const handleSendMiseEnDemeure = async (e: React.FormEvent) => {
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Gestion des Paiements</h1>
-        <p className="text-slate-600">Suivi et traitement des paiements des avis émis</p>
-        <p className="text-sm text-slate-500 mt-1">
-          Traitez les paiements, consultez l'historique et gérez le suivi financier
-        </p>
-      </div>
-
-      {/* Cartes de statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {/* En attente */}
-        <div className="bg-white rounded-xl shadow-sm border border-orange-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">En attente</p>
-              <p className="text-2xl font-bold text-orange-600">{stats.totalEnAttente}</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {formatMontant(stats.totalMontantEnAttente)} Ar
-              </p>
-            </div>
-            <div className="p-3 bg-orange-100 rounded-full">
-              <Clock className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* En cours */}
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">En cours</p>
-              <p className="text-2xl font-bold text-blue-600">{stats.totalEnCours}</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {formatMontant(stats.totalMontantEnCours)} Ar
-              </p>
-            </div>
-            <div className="p-3 bg-blue-100 rounded-full">
-              <Clock className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* Payés */}
-        <div className="bg-white rounded-xl shadow-sm border border-green-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Payés</p>
-              <p className="text-2xl font-bold text-green-600">{stats.totalPaye}</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {formatMontant(stats.totalMontantPaye)} Ar
-              </p>
-            </div>
-            <div className="p-3 bg-green-100 rounded-full">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* En retard */}
-        <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">En retard</p>
-              <p className="text-2xl font-bold text-red-600">{stats.totalRetard}</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {formatMontant(stats.totalMontantRetard)} Ar
-              </p>
-            </div>
-            <div className="p-3 bg-red-100 rounded-full">
-              <AlertCircle className="w-6 h-6 text-red-600" />
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-red-100">
-            <p className="text-xs text-slate-500">Avis en retard de paiement</p>
-          </div>
-        </div>
-
-        {/* Annulés */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Annulés</p>
-              <p className="text-2xl font-bold text-slate-600">{stats.totalAnnule}</p>
-              <p className="text-lg font-semibold text-slate-900">-</p>
-            </div>
-            <div className="p-3 bg-slate-100 rounded-full">
-              <XCircle className="w-6 h-6 text-slate-600" />
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-500">Avis annulés</p>
-          </div>
-        </div>
-      </div>
+     
 
       {/* Tableau des paiements en retard */}
       {renderTableauRetards()}
@@ -1557,7 +1457,6 @@ const handleSendMiseEnDemeure = async (e: React.FormEvent) => {
               <option value="tous">Tous les statuts</option>
               <option value="En attente">En attente</option>
               <option value="En cours">En cours</option>
-              <option value="Partiellement payé">Partiellement payé</option>
               <option value="Payé">Payés</option>
               <option value="Retard">En retard</option>
               <option value="Annulé">Annulés</option>
@@ -1646,9 +1545,13 @@ const handleSendMiseEnDemeure = async (e: React.FormEvent) => {
             {filtreStatut === 'tous' ? (
               <div className="space-y-6">
                 {/* Afficher les tableaux dans un ordre logique */}
-                {getAllUniqueStatuses().map(status => (
-                  renderTableauParStatut(status, getAvisByStatus(status))
-                ))}
+                {getAllUniqueStatuses().map(status => {
+                  // Ne pas afficher les tableaux pour "Partiellement payé" et "Payé"
+                  if (status === 'Partiellement payé' || status === 'Payé') {
+                    return null;
+                  }
+                  return renderTableauParStatut(status, getAvisByStatus(status));
+                })}
               </div>
             ) : (
               // Si un statut spécifique est sélectionné, montrer uniquement ce tableau

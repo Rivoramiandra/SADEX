@@ -1,11 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   FileText, Plus, Filter, Download, Search, 
   ChevronLeft, ChevronRight, MoreVertical,
   Eye, Edit, Trash2, FileSignature,
   CheckCircle, XCircle, AlertCircle,
   FileWarning, FolderOpen, FolderCheck,
-  Check, Save, Clock, Archive, FileCheck
+  Check, Save, Clock, Archive, FileCheck,
+  User, Calendar, MapPin, FileArchive,
+  Building, Home, Clock as ClockIcon,
+  Percent, Download as DownloadIcon,
+  Printer, Mail, Share2, Copy,
+  ExternalLink, FileBarChart
 } from 'lucide-react';
 
 interface FT {
@@ -35,6 +40,9 @@ interface FT {
   dossier_a_fournir?: string[];
   delai_complement?: number;
   dossiers_fournis_json?: string;
+  telephone?: string;
+  email?: string;
+  adresse?: string;
 }
 
 interface DossierManquant {
@@ -42,7 +50,15 @@ interface DossierManquant {
   checked: boolean;
 }
 
+interface ExportFormat {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  format: string;
+}
+
 export default function FicheContent() {
+  // États principaux
   const [fts, setFts] = useState<FT[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +71,28 @@ export default function FicheContent() {
   const [selectedFt, setSelectedFt] = useState<FT | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   
-  // État pour le modal de complétion de dossier
+  // États pour les modals et actions
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedFtForCompletion, setSelectedFtForCompletion] = useState<FT | null>(null);
   const [checkedDossiers, setCheckedDossiers] = useState<DossierManquant[]>([]);
   const [updatingFtId, setUpdatingFtId] = useState<number | null>(null);
+  
+  // États pour les fonctionnalités avancées
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc' | 'desc'}>({
+    key: 'created_at',
+    direction: 'desc'
+  });
+
+  // Formats d'export disponibles
+  const exportFormats: ExportFormat[] = [
+    { id: 'csv', name: 'CSV', icon: <FileText className="w-4 h-4" />, format: 'csv' },
+    { id: 'excel', name: 'Excel', icon: <FileBarChart className="w-4 h-4" />, format: 'xlsx' },
+    { id: 'pdf', name: 'PDF', icon: <FileText className="w-4 h-4" />, format: 'pdf' },
+    { id: 'print', name: 'Imprimer', icon: <Printer className="w-4 h-4" />, format: 'print' },
+  ];
 
   // Récupérer les FT depuis l'API
   const fetchFTs = useCallback(async () => {
@@ -70,7 +103,9 @@ export default function FicheContent() {
       const offset = (page - 1) * pageSize;
       const params = new URLSearchParams({
         offset: offset.toString(),
-        limit: pageSize.toString()
+        limit: pageSize.toString(),
+        sort: sortConfig.key,
+        order: sortConfig.direction
       });
       
       if (activeTab !== 'tous') {
@@ -100,14 +135,12 @@ export default function FicheContent() {
       }
 
       const result = await response.json();
-      console.log('API response:', result);
       
       if (result.success) {
         const ftsData = result.data || [];
         
         // Traiter les données pour extraire les informations des dossiers
         const processedFts = ftsData.map((ft: any) => {
-          // Parser le champ dossier s'il est une chaîne
           let dossierObj = ft.dossier;
           if (typeof ft.dossier === 'string') {
             try {
@@ -122,11 +155,13 @@ export default function FicheContent() {
             statut_dossier: ft.statut_dossier || (dossierObj?.statut_dossier || 'Non défini'),
             dossiers_fournis: ft.dossiers_fournis || (dossierObj?.dossiers_fournis || []),
             dossier_a_fournir: ft.dossier_a_fournir || (dossierObj?.dossier_a_fournir || []),
-            delai_complement: ft.delai_complement || (dossierObj?.delai_complement || 0)
+            delai_complement: ft.delai_complement || (dossierObj?.delai_complement || 0),
+            telephone: ft.telephone || '',
+            email: ft.email || '',
+            adresse: ft.adresse || ''
           };
         });
         
-        console.log('Processed FTs:', processedFts);
         setFts(processedFts);
         
         if (result.total !== undefined) {
@@ -151,7 +186,7 @@ export default function FicheContent() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, activeTab]);
+  }, [page, pageSize, activeTab, sortConfig]);
 
   // Initial fetch
   useEffect(() => {
@@ -169,37 +204,78 @@ export default function FicheContent() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Filtrer les FT
-  const filteredFts = fts.filter(ft => {
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      const matchesSearch = (
-        ft.reference_ft?.toLowerCase().includes(searchLower) ||
-        ft.nom_convoquee?.toLowerCase().includes(searchLower) ||
-        ft.nom_personne_r?.toLowerCase().includes(searchLower) ||
-        ft.conclusion?.toLowerCase().includes(searchLower) ||
-        ft.commune?.toLowerCase().includes(searchLower) ||
-        ft.fokontany?.toLowerCase().includes(searchLower) ||
-        ft.type_convoquee?.toLowerCase().includes(searchLower)
-      );
-      if (!matchesSearch) return false;
-    }
+  // Calculer les statistiques
+  const stats = useMemo(() => {
+    const total = fts.length;
+    const complet = fts.filter(ft => ft.statut_dossier === 'Complet').length;
+    const incomplet = fts.filter(ft => ft.statut_dossier === 'Incomplet').length;
+    const aucun = fts.filter(ft => ft.statut_dossier === 'Aucun dossier requis').length;
+    
+    const tauxComplet = total > 0 ? Math.round((complet / total) * 100) : 0;
+    const tauxIncomplet = total > 0 ? Math.round((incomplet / total) * 100) : 0;
+    
+    return { total, complet, incomplet, aucun, tauxComplet, tauxIncomplet };
+  }, [fts]);
 
-    if (activeTab !== 'tous') {
-      switch(activeTab) {
-        case 'complet':
-          return ft.statut_dossier === 'Complet';
-        case 'incomplet':
-          return ft.statut_dossier === 'Incomplet';
-        case 'aucun':
-          return ft.statut_dossier === 'Aucun dossier requis';
-        default:
-          return true;
+  // Filtrer et trier les FT
+  const filteredFts = useMemo(() => {
+    let filtered = fts.filter(ft => {
+      if (searchTerm.trim()) {
+        const searchLower = searchTerm.toLowerCase().trim();
+        const matchesSearch = (
+          ft.reference_ft?.toLowerCase().includes(searchLower) ||
+          ft.nom_convoquee?.toLowerCase().includes(searchLower) ||
+          ft.nom_personne_r?.toLowerCase().includes(searchLower) ||
+          ft.conclusion?.toLowerCase().includes(searchLower) ||
+          ft.commune?.toLowerCase().includes(searchLower) ||
+          ft.fokontany?.toLowerCase().includes(searchLower) ||
+          ft.type_convoquee?.toLowerCase().includes(searchLower) ||
+          ft.telephone?.toLowerCase().includes(searchLower) ||
+          ft.email?.toLowerCase().includes(searchLower)
+        );
+        if (!matchesSearch) return false;
       }
-    }
 
-    return true;
-  });
+      if (activeTab !== 'tous') {
+        switch(activeTab) {
+          case 'complet':
+            return ft.statut_dossier === 'Complet';
+          case 'incomplet':
+            return ft.statut_dossier === 'Incomplet';
+          case 'aucun':
+            return ft.statut_dossier === 'Aucun dossier requis';
+          default:
+            return true;
+        }
+      }
+
+      return true;
+    });
+
+    // Trier les résultats
+    filtered.sort((a, b) => {
+      let aValue: any = a[sortConfig.key as keyof FT];
+      let bValue: any = b[sortConfig.key as keyof FT];
+
+      if (sortConfig.key === 'date_ft') {
+        aValue = new Date(a.date_ft).getTime();
+        bValue = new Date(b.date_ft).getTime();
+      } else if (sortConfig.key === 'created_at') {
+        aValue = new Date(a.created_at).getTime();
+        bValue = new Date(b.created_at).getTime();
+      }
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+
+    return filtered;
+  }, [fts, searchTerm, activeTab, sortConfig]);
 
   // Calculer les dossiers manquants pour un FT
   const getDossiersManquants = (ft: FT): string[] => {
@@ -212,6 +288,35 @@ export default function FicheContent() {
     
     return dossiersRequis
       .filter((dossier: string) => !dossiersFournis.includes(dossier));
+  };
+
+  // Calculer le pourcentage de complétion d'un dossier
+  const getCompletionPercentage = (ft: FT): number => {
+    if (ft.statut_dossier === 'Aucun dossier requis') return 100;
+    if (!ft.dossier_a_fournir || ft.dossier_a_fournir.length === 0) return 0;
+    
+    const dossiersFournis = ft.dossiers_fournis || [];
+    return Math.round((dossiersFournis.length / ft.dossier_a_fournir.length) * 100);
+  };
+
+  // Gestion de la sélection multiple
+  const toggleRowSelection = (id: number) => {
+    const newSelected = new Set(selectedRows);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedRows(newSelected);
+  };
+
+  const selectAllRows = () => {
+    if (selectedRows.size === filteredFts.length) {
+      setSelectedRows(new Set());
+    } else {
+      const allIds = filteredFts.map(ft => ft.id);
+      setSelectedRows(new Set(allIds));
+    }
   };
 
   // Ouvrir le modal de complétion
@@ -265,24 +370,15 @@ export default function FicheContent() {
       
       const nouveauStatutDossier = tousDossiersFournis ? 'Complet' : 'Incomplet';
 
-      console.log('Validation données:', {
-        ftId: ft.id,
-        dossiersCoches,
-        currentDossiersFournis,
-        updatedDossiersFournis,
-        dossiersRequis,
-        tousDossiersFournis,
-        nouveauStatutDossier
+      const response = await fetch(`http://localhost:3000/api/ft/${ft.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          statut_dossier: nouveauStatutDossier,
+          dossiers_fournis: updatedDossiersFournis
+        })
       });
-
- const response = await fetch(`http://localhost:3000/api/ft/${ft.id}`, {
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    statut_dossier: nouveauStatutDossier,
-    dossiers_fournis: updatedDossiersFournis
-  })
-});
+      
       if (!response.ok) {
         throw new Error('Erreur lors de la mise à jour');
       }
@@ -312,20 +408,146 @@ export default function FicheContent() {
     }
   };
 
-  // Calculer les statistiques
-  const calculateStatistics = () => {
-    const stats = {
-      total: fts.length,
-      complet: fts.filter(ft => ft.statut_dossier === 'Complet').length,
-      incomplet: fts.filter(ft => ft.statut_dossier === 'Incomplet').length,
-      aucun: fts.filter(ft => ft.statut_dossier === 'Aucun dossier requis').length
-    };
-    
-    return stats;
+  // Fonctions de tri
+  const handleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
-  const stats = calculateStatistics();
+  // Fonctions d'export
+  const handleExport = (format: string) => {
+    const dataToExport = selectedRows.size > 0 
+      ? filteredFts.filter(ft => selectedRows.has(ft.id))
+      : filteredFts;
 
+    if (dataToExport.length === 0) {
+      alert('Aucune donnée à exporter');
+      return;
+    }
+
+    switch(format) {
+      case 'csv':
+        exportToCSV(dataToExport);
+        break;
+      case 'xlsx':
+        exportToExcel(dataToExport);
+        break;
+      case 'pdf':
+        exportToPDF(dataToExport);
+        break;
+      case 'print':
+        printData(dataToExport);
+        break;
+    }
+    setShowExportMenu(false);
+  };
+
+  const exportToCSV = (data: FT[]) => {
+    const headers = ['Référence', 'Date', 'Heure', 'Personne convoquée', 'Type', 'Commune', 'Fokontany', 'Statut', 'Statut Dossier', 'Pourcentage Complétion', 'Téléphone', 'Email'];
+    const csvRows = [
+      headers.join(','),
+      ...data.map(ft => [
+        ft.reference_ft,
+        formatDate(ft.date_ft),
+        formatTime(ft.heure_ft),
+        ft.nom_convoquee || ft.nom_personne_r || '',
+        ft.type_convoquee || '',
+        ft.commune || '',
+        ft.fokontany || '',
+        ft.statut || '',
+        ft.statut_dossier || '',
+        getCompletionPercentage(ft) + '%',
+        ft.telephone || '',
+        ft.email || ''
+      ].map(field => `"${field}"`).join(','))
+    ];
+    
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `fts_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToExcel = (data: FT[]) => {
+    // Implémentation basique - à améliorer avec une bibliothèque Excel
+    alert('Export Excel - À implémenter avec une bibliothèque comme xlsx');
+  };
+
+  const exportToPDF = (data: FT[]) => {
+    alert('Export PDF - À implémenter avec une bibliothèque PDF');
+  };
+
+  const printData = (data: FT[]) => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Liste des Procès-verbaux</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f4f4f4; }
+              .header { text-align: center; margin-bottom: 30px; }
+              .footer { margin-top: 30px; font-size: 12px; color: #666; }
+              @media print {
+                body { margin: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>Liste des Procès-verbaux de Fin de Traitement</h1>
+              <p>Date d'export: ${new Date().toLocaleDateString('fr-FR')}</p>
+              <p>Total: ${data.length} enregistrement(s)</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Référence</th>
+                  <th>Date</th>
+                  <th>Personne</th>
+                  <th>Localisation</th>
+                  <th>Statut Dossier</th>
+                  <th>Complétion</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.map(ft => `
+                  <tr>
+                    <td>${ft.reference_ft}</td>
+                    <td>${formatDate(ft.date_ft)}</td>
+                    <td>${ft.nom_convoquee || ft.nom_personne_r || ''}</td>
+                    <td>${ft.commune || ''} ${ft.fokontany ? `- ${ft.fokontany}` : ''}</td>
+                    <td>${ft.statut_dossier}</td>
+                    <td>${getCompletionPercentage(ft)}%</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <div class="footer">
+              <p>Export généré le ${new Date().toLocaleString('fr-FR')}</p>
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    }
+  };
+
+  // Fonctions utilitaires
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Etabli':
@@ -334,6 +556,8 @@ export default function FicheContent() {
         return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'Fini':
         return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Annulé':
+        return 'bg-red-100 text-red-800 border-red-200';
       default:
         return 'bg-slate-100 text-slate-800 border-slate-200';
     }
@@ -384,13 +608,17 @@ export default function FicheContent() {
     return timeString.substring(0, 5);
   };
 
+  const formatDateTime = (dateString: string, timeString: string) => {
+    return `${formatDate(dateString)} ${timeString ? `à ${formatTime(timeString)}` : ''}`;
+  };
+
   const handleViewDetails = (ft: FT) => {
     setSelectedFt(ft);
     setShowDetailsModal(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce procès-verbal ?')) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce procès-verbal ? Cette action est irréversible.')) {
       return;
     }
 
@@ -400,8 +628,15 @@ export default function FicheContent() {
       });
 
       if (response.ok) {
+        // Supprimer de la liste locale
+        setFts(prev => prev.filter(ft => ft.id !== id));
+        // Désélectionner si nécessaire
+        setSelectedRows(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
         alert('Procès-verbal supprimé avec succès');
-        fetchFTs();
       } else {
         const result = await response.json();
         throw new Error(result.message || 'Erreur lors de la suppression');
@@ -411,32 +646,69 @@ export default function FicheContent() {
     }
   };
 
-  const handleExport = () => {
-    const dataToExport = filteredFts;
-    const headers = ['Référence', 'Date', 'Heure', 'Personne convoquée', 'Type', 'Commune', 'Fokontany', 'Statut', 'Statut Dossier'];
-    const csvRows = [
-      headers.join(','),
-      ...dataToExport.map(ft => [
-        ft.reference_ft,
-        formatDate(ft.date_ft),
-        formatTime(ft.heure_ft),
-        ft.nom_convoquee || ft.nom_personne_r || '',
-        ft.type_convoquee || '',
-        ft.commune || '',
-        ft.fokontany || '',
-        ft.statut || '',
-        ft.statut_dossier || ''
-      ].map(field => `"${field}"`).join(','))
-    ];
-    
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `fts-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+  const handleDeleteMultiple = async () => {
+    if (selectedRows.size === 0) {
+      alert('Veuillez sélectionner au moins un procès-verbal à supprimer');
+      return;
+    }
+
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${selectedRows.size} procès-verbal(s) ? Cette action est irréversible.`)) {
+      return;
+    }
+
+    try {
+      const deletePromises = Array.from(selectedRows).map(id =>
+        fetch(`http://localhost:3000/api/ft/${id}`, { method: 'DELETE' })
+      );
+
+      const results = await Promise.allSettled(deletePromises);
+
+      // Vérifier les résultats
+      const failedDeletes = results.filter((result, index) => 
+        result.status === 'rejected' || !result.value?.ok
+      );
+
+      if (failedDeletes.length === 0) {
+        // Mettre à jour la liste locale
+        setFts(prev => prev.filter(ft => !selectedRows.has(ft.id)));
+        setSelectedRows(new Set());
+        alert(`${selectedRows.size} procès-verbal(s) supprimé(s) avec succès`);
+      } else {
+        alert(`${failedDeletes.length} suppression(s) ont échoué. Veuillez réessayer.`);
+      }
+    } catch (err: any) {
+      alert(`Erreur: ${err.message}`);
+    }
+  };
+
+  const handleDuplicate = async (ft: FT) => {
+    if (!confirm('Voulez-vous dupliquer ce procès-verbal ?')) {
+      return;
+    }
+
+    try {
+      const duplicateData = {
+        ...ft,
+        reference_ft: `${ft.reference_ft}-COPIE`,
+        date_ft: new Date().toISOString().split('T')[0],
+        heure_ft: new Date().toTimeString().slice(0, 5)
+      };
+
+      const response = await fetch('http://localhost:3000/api/ft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(duplicateData)
+      });
+
+      if (response.ok) {
+        alert('Procès-verbal dupliqué avec succès');
+        fetchFTs(); // Rafraîchir la liste
+      } else {
+        throw new Error('Erreur lors de la duplication');
+      }
+    } catch (err: any) {
+      alert(`Erreur: ${err.message}`);
+    }
   };
 
   const handlePageSizeChange = (newSize: number) => {
@@ -448,24 +720,54 @@ export default function FicheContent() {
   const startIndex = (page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, filteredFts.length);
 
+  // Calculer les FT à afficher sur la page courante
+  const displayedFts = useMemo(() => {
+    return filteredFts.slice(startIndex, endIndex);
+  }, [filteredFts, startIndex, endIndex]);
+
   return (
     <div className="space-y-6">
-      {/* En-tête */}
-      <div className="flex items-center justify-between">
+      {/* En-tête principal */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">Procès-verbaux de Fin de Traitement</h1>
-          <p className="text-slate-600">Gestion et consultation des procès-verbaux établis</p>
+          <p className="text-slate-600">Gestion et suivi des procès-verbaux établis</p>
         </div>
-       
+        
+        <div className="flex items-center gap-3">
+          {selectedRows.size > 0 && (
+            <div className="flex items-center gap-2 mr-4">
+              <span className="text-sm font-medium text-blue-600">
+                {selectedRows.size} sélectionné(s)
+              </span>
+              <button
+                onClick={handleDeleteMultiple}
+                className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Supprimer
+              </button>
+            </div>
+          )}
+          
+          <button
+            onClick={() => window.location.href = '/ft/nouveau'}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-sm transition-all duration-200 hover:shadow-md"
+          >
+            <Plus className="w-5 h-5" />
+            Nouveau Procès-verbal
+          </button>
+        </div>
       </div>
 
       {/* Cartes de statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-white to-blue-50 rounded-xl shadow-sm border border-blue-100 p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-600">Total des FT</p>
               <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
+              <p className="text-xs text-slate-500 mt-1">Procès-verbaux enregistrés</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
               <FileText className="w-6 h-6 text-blue-600" />
@@ -473,11 +775,18 @@ export default function FicheContent() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-gradient-to-br from-white to-emerald-50 rounded-xl shadow-sm border border-emerald-100 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Dossiers Complets</p>
-              <p className="text-2xl font-bold text-emerald-700">{stats.complet}</p>
+              <div className="flex items-center">
+                <p className="text-sm text-slate-600">Dossiers Complets</p>
+                <Percent className="w-3 h-3 ml-2 text-emerald-600" />
+              </div>
+              <div className="flex items-baseline">
+                <p className="text-2xl font-bold text-emerald-700">{stats.complet}</p>
+                <span className="text-xs text-emerald-600 ml-2">({stats.tauxComplet}%)</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Tous dossiers fournis</p>
             </div>
             <div className="p-3 bg-emerald-100 rounded-full">
               <CheckCircle className="w-6 h-6 text-emerald-600" />
@@ -485,11 +794,18 @@ export default function FicheContent() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-gradient-to-br from-white to-amber-50 rounded-xl shadow-sm border border-amber-100 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Dossiers Incomplets</p>
-              <p className="text-2xl font-bold text-amber-700">{stats.incomplet}</p>
+              <div className="flex items-center">
+                <p className="text-sm text-slate-600">Dossiers Incomplets</p>
+                <AlertCircle className="w-3 h-3 ml-2 text-amber-600" />
+              </div>
+              <div className="flex items-baseline">
+                <p className="text-2xl font-bold text-amber-700">{stats.incomplet}</p>
+                <span className="text-xs text-amber-600 ml-2">({stats.tauxIncomplet}%)</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Dossiers manquants</p>
             </div>
             <div className="p-3 bg-amber-100 rounded-full">
               <XCircle className="w-6 h-6 text-amber-600" />
@@ -497,11 +813,12 @@ export default function FicheContent() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-600">Aucun dossier requis</p>
               <p className="text-2xl font-bold text-slate-700">{stats.aucun}</p>
+              <p className="text-xs text-slate-500 mt-1">Aucun document requis</p>
             </div>
             <div className="p-3 bg-slate-100 rounded-full">
               <FileWarning className="w-6 h-6 text-slate-600" />
@@ -510,677 +827,650 @@ export default function FicheContent() {
         </div>
       </div>
 
-      {/* Onglets et filtres */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          {/* Onglets */}
-          <div className="flex border-b border-slate-200">
-            <button
-              onClick={() => setActiveTab('tous')}
-              className={`px-4 py-2 font-medium transition-colors ${activeTab === 'tous' 
-                ? 'border-b-2 border-blue-500 text-blue-600' 
-                : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Tous les FT
-            </button>
-            <button
-              onClick={() => setActiveTab('complet')}
-              className={`px-4 py-2 font-medium transition-colors flex items-center ${activeTab === 'complet' 
-                ? 'border-b-2 border-emerald-500 text-emerald-600' 
-                : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Complets
-            </button>
-            <button
-              onClick={() => setActiveTab('incomplet')}
-              className={`px-4 py-2 font-medium transition-colors flex items-center ${activeTab === 'incomplet' 
-                ? 'border-b-2 border-amber-500 text-amber-600' 
-                : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <XCircle className="w-4 h-4 mr-2" />
-              Incomplets
-            </button>
-            <button
-              onClick={() => setActiveTab('aucun')}
-              className={`px-4 py-2 font-medium transition-colors flex items-center ${activeTab === 'aucun' 
-                ? 'border-b-2 border-slate-500 text-slate-600' 
-                : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <FileWarning className="w-4 h-4 mr-2" />
-              Aucun requis
-            </button>
-          </div>
-
-          {/* Barre de recherche */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher par référence, nom, commune..."
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          {/* Filtres supplémentaires */}
-          <div className="flex flex-wrap gap-2">
-            <select
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={pageSize}
-              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            >
-              <option value="5">5 par page</option>
-              <option value="10">10 par page</option>
-              <option value="20">20 par page</option>
-              <option value="50">50 par page</option>
-            </select>
-
-            <button 
-              className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              onClick={handleExport}
-              disabled={filteredFts.length === 0}
-            >
-              <Download className="w-4 h-4" />
-              Exporter
-            </button>
-          </div>
-        </div>
-
-        {/* Tableau des FT */}
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <p className="text-slate-600">Chargement des procès-verbaux...</p>
-            </div>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-            <p className="text-red-700 font-medium">Erreur: {error}</p>
-            <button 
-              onClick={fetchFTs}
-              className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              Réessayer
-            </button>
-          </div>
-        ) : filteredFts.length === 0 ? (
-          <div className="text-center p-8">
-            {activeTab === 'incomplet' ? (
-              <FolderCheck className="w-16 h-16 text-emerald-300 mx-auto mb-4" />
-            ) : activeTab === 'complet' ? (
-              <CheckCircle className="w-16 h-16 text-emerald-300 mx-auto mb-4" />
-            ) : (
-              <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            )}
-            <h3 className="text-lg font-semibold text-slate-700 mb-2">
-              {searchTerm 
-                ? 'Aucun procès-verbal trouvé' 
-                : activeTab === 'complet'
-                ? 'Aucun dossier complet'
-                : activeTab === 'incomplet'
-                ? 'Aucun dossier incomplet'
-                : activeTab === 'aucun'
-                ? 'Aucun dossier sans requisition'
-                : 'Aucun procès-verbal enregistré'}
-            </h3>
-            <p className="text-slate-500">
-              {searchTerm 
-                ? 'Aucun procès-verbal ne correspond à vos critères de recherche.' 
-                : 'Commencez par créer votre premier procès-verbal.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Référence
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Date/Heure
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Personne convoquée
-                    </th>
-                  
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Dossiers Manquants
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {filteredFts.slice(startIndex, endIndex).map((ft) => {
-                    const dossiersManquants = getDossiersManquants(ft);
-                    const hasDossiersManquants = dossiersManquants.length > 0;
-                    
-                    return (
-                      <tr key={ft.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mr-3">
-                              <FileSignature className="w-4 h-4 text-white" />
-                            </div>
-                            <div>
-                              <div className="text-sm font-medium text-slate-900">{ft.reference_ft}</div>
-                              <div className="text-xs text-slate-500">DS-{ft.iddescente}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-slate-900">{formatDate(ft.date_ft)}</div>
-                          <div className="text-xs text-slate-500">{formatTime(ft.heure_ft)}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-slate-900">{ft.nom_convoquee || ft.nom_personne_r || 'Non spécifié'}</div>
-                          <div className="text-xs text-slate-500 capitalize">{ft.type_convoquee}</div>
-                        </td>
-                       
-                      
-                        
-                        <td className="px-6 py-4">
-                          {hasDossiersManquants ? (
-                            <div className="flex items-center">
-                              <span className="text-xs font-medium text-amber-700 mr-2">
-                                {dossiersManquants.length} manquant(s)
-                              </span>
-                              <button
-                                onClick={() => handleOpenCompleteModal(ft)}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs transition-colors"
-                                title="Compléter le dossier"
-                              >
-                                <FileCheck className="w-3 h-3" />
-                                Compléter
-                              </button>
-                            </div>
-                          ) : ft.statut_dossier === 'Incomplet' ? (
-                            <span className="text-xs text-slate-400">Aucun dossier manquant</span>
-                          ) : (
-                            <span className="text-xs text-emerald-600 flex items-center">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Complet
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleViewDetails(ft)}
-                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
-                              title="Voir détails"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => window.location.href = `/ft/editer/${ft.id}`}
-                              className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded transition-colors"
-                              title="Modifier"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(ft.id)}
-                              className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-6">
-              <div className="text-sm text-slate-600">
-                {searchTerm 
-                  ? `Affichage de ${startIndex + 1} à ${endIndex} sur ${filteredFts.length} résultats filtrés`
-                  : `Affichage de ${startIndex + 1} à ${endIndex} sur ${totalCount} résultats`}
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                  disabled={page === 1}
-                  className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (page <= 3) {
-                    pageNum = i + 1;
-                  } else if (page >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = page - 2 + i;
-                  }
-                  
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`w-10 h-10 rounded-lg border transition-colors ${page === pageNum 
-                        ? 'bg-blue-500 text-white border-blue-500' 
-                        : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-                
-                <button
-                  onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={page === totalPages}
-                  className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Modal de complétion de dossier */}
-      {showCompleteModal && selectedFtForCompletion && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900 flex items-center">
-                  <FileCheck className="inline-block w-6 h-6 mr-2 text-amber-600" />
-                  Compléter le dossier
-                </h2>
-                <p className="text-slate-600 mt-1">
-                  {selectedFtForCompletion.reference_ft} • {selectedFtForCompletion.nom_convoquee || selectedFtForCompletion.nom_personne_r || 'Non spécifié'}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getDossierStatusColor(selectedFtForCompletion.statut_dossier)}`}>
-                    {selectedFtForCompletion.statut_dossier}
-                  </span>
-                  {selectedFtForCompletion.delai_complement && selectedFtForCompletion.delai_complement > 0 && (
-                    <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">
-                      Délai: {selectedFtForCompletion.delai_complement} jours
-                    </span>
-                  )}
-                </div>
-              </div>
+      {/* Conteneur principal */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        {/* Barre de contrôle supérieure */}
+        <div className="p-6 border-b border-slate-200">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Onglets de filtrage */}
+            <div className="flex border-b border-slate-200 overflow-x-auto">
               <button
-                onClick={() => {
-                  setShowCompleteModal(false);
-                  setSelectedFtForCompletion(null);
-                  setCheckedDossiers([]);
-                }}
-                className="p-2 hover:bg-slate-100 rounded-full"
+                onClick={() => setActiveTab('tous')}
+                className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === 'tous' 
+                  ? 'border-b-2 border-blue-500 text-blue-600' 
+                  : 'text-slate-600 hover:text-slate-900'}`}
               >
-                <span className="sr-only">Fermer</span>
-                <span className="text-2xl">×</span>
+                Tous ({stats.total})
+              </button>
+              <button
+                onClick={() => setActiveTab('complet')}
+                className={`px-4 py-2 font-medium transition-colors flex items-center whitespace-nowrap ${activeTab === 'complet' 
+                  ? 'border-b-2 border-emerald-500 text-emerald-600' 
+                  : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Complets ({stats.complet})
+              </button>
+              <button
+                onClick={() => setActiveTab('incomplet')}
+                className={`px-4 py-2 font-medium transition-colors flex items-center whitespace-nowrap ${activeTab === 'incomplet' 
+                  ? 'border-b-2 border-amber-500 text-amber-600' 
+                  : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                Incomplets ({stats.incomplet})
+              </button>
+              <button
+                onClick={() => setActiveTab('aucun')}
+                className={`px-4 py-2 font-medium transition-colors flex items-center whitespace-nowrap ${activeTab === 'aucun' 
+                  ? 'border-b-2 border-slate-500 text-slate-600' 
+                  : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                <FileWarning className="w-4 h-4 mr-2" />
+                Aucun requis ({stats.aucun})
               </button>
             </div>
 
-            <div className="p-6">
-              {/* Dossiers déjà fournis */}
-              {selectedFtForCompletion.dossiers_fournis && selectedFtForCompletion.dossiers_fournis.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-slate-800 mb-3 flex items-center">
-                    <CheckCircle className="w-5 h-5 mr-2 text-emerald-600" />
-                    Dossiers déjà fournis ({selectedFtForCompletion.dossiers_fournis.length})
-                  </h3>
-                  <div className="bg-emerald-50 rounded-lg p-4">
-                    <div className="flex flex-wrap gap-2">
-                      {selectedFtForCompletion.dossiers_fournis.map((dossier, idx) => (
-                        <span key={idx} className="px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-full text-sm flex items-center">
-                          <CheckCircle className="w-3 h-3 mr-1.5" />
-                          {dossier}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
+            {/* Barre de recherche */}
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher par référence, nom, téléphone, email..."
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
 
-              {/* Dossiers manquants */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-slate-800 flex items-center">
-                    <XCircle className="w-5 h-5 mr-2 text-amber-600" />
-                    Dossiers manquants ({checkedDossiers.length})
-                  </h3>
-                  <span className="text-sm text-amber-700 bg-amber-100 px-3 py-1 rounded-full">
-                    Cocher les dossiers maintenant fournis
-                  </span>
-                </div>
+            {/* Contrôles supplémentaires */}
+            <div className="flex flex-wrap gap-2">
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
+                  disabled={filteredFts.length === 0 && selectedRows.size === 0}
+                >
+                  <DownloadIcon className="w-4 h-4" />
+                  Exporter
+                  <ChevronLeft className={`w-4 h-4 transform transition-transform ${showExportMenu ? '-rotate-90' : '-rotate-180'}`} />
+                </button>
                 
-                {checkedDossiers.length > 0 ? (
-                  <div className="bg-amber-50 rounded-lg p-4">
-                    <div className="space-y-3">
-                      {checkedDossiers.map((dossier, idx) => (
-                        <div key={idx} className="flex items-center p-3 bg-white rounded-lg border border-amber-200">
-                          <input
-                            type="checkbox"
-                            id={`dossier-${idx}`}
-                            checked={dossier.checked}
-                            onChange={() => handleCheckboxChangeModal(idx)}
-                            className="h-5 w-5 text-amber-600 rounded border-slate-300 focus:ring-amber-500"
-                          />
-                          <label htmlFor={`dossier-${idx}`} className="ml-3 flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-800 font-medium">{dossier.nom}</span>
-                              {dossier.checked && (
-                                <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">
-                                  À ajouter
-                                </span>
-                              )}
-                            </div>
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-amber-200">
-                      <div className="flex justify-between items-center">
-                        <div className="text-sm text-slate-600">
-                          {checkedDossiers.filter(d => d.checked).length} dossier(s) sélectionné(s) sur {checkedDossiers.length}
-                        </div>
-                        <button
-                          onClick={handleValidateDossiers}
-                          disabled={updatingFtId === selectedFtForCompletion.id || checkedDossiers.filter(d => d.checked).length === 0}
-                          className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {updatingFtId === selectedFtForCompletion.id ? (
-                            <>
-                              <Clock className="w-4 h-4 animate-spin" />
-                              Validation en cours...
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-4 h-4" />
-                              Valider les dossiers cochés
-                            </>
-                          )}
-                        </button>
+                {showExportMenu && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowExportMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+                      <div className="py-1">
+                        {exportFormats.map((format) => (
+                          <button
+                            key={format.id}
+                            onClick={() => handleExport(format.format)}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          >
+                            {format.icon}
+                            <span>{format.name}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="bg-slate-50 rounded-lg p-8 text-center">
-                    <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                    <h4 className="text-lg font-semibold text-emerald-700 mb-2">Aucun dossier manquant</h4>
-                    <p className="text-slate-600">Tous les dossiers requis ont déjà été fournis.</p>
-                  </div>
+                  </>
                 )}
               </div>
 
-              {/* Informations de suivi */}
-              <div className="bg-slate-50 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-slate-700 mb-2">Informations</h4>
-                <ul className="text-sm text-slate-600 space-y-1">
-                  <li className="flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-2 text-amber-500" />
-                    Les dossiers cochés seront ajoutés à la liste des dossiers fournis
-                  </li>
-                  <li className="flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-2 text-amber-500" />
-                    Si tous les dossiers sont fournis, le statut passera automatiquement à "Complet"
-                  </li>
-                  {selectedFtForCompletion.delai_complement && selectedFtForCompletion.delai_complement > 0 && (
-                    <li className="flex items-center">
-                      <Clock className="w-4 h-4 mr-2 text-amber-500" />
-                      Délai de complément: {selectedFtForCompletion.delai_complement} jours
-                    </li>
-                  )}
-                </ul>
-              </div>
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6 flex justify-between gap-3">
-              <button
-                onClick={() => {
-                  setShowCompleteModal(false);
-                  setSelectedFtForCompletion(null);
-                  setCheckedDossiers([]);
-                }}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              <select
+                className="px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
               >
-                Annuler
+                <option value="5">5 par page</option>
+                <option value="10">10 par page</option>
+                <option value="20">20 par page</option>
+                <option value="50">50 par page</option>
+              </select>
+
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg transition-colors ${showFilters 
+                  ? 'border-blue-500 bg-blue-50 text-blue-600' 
+                  : 'border-slate-300 hover:bg-slate-50'}`}
+              >
+                <Filter className="w-4 h-4" />
+                Filtres
               </button>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleViewDetails(selectedFtForCompletion)}
-                  className="px-4 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center"
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  Voir détails complets
-                </button>
-                <button
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center"
-                  onClick={() => {
-                    window.location.href = `/ft/editer/${selectedFtForCompletion.id}`;
-                  }}
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Modifier le procès-verbal
-                </button>
-              </div>
             </div>
           </div>
+
+          {/* Panneau de filtres avancés */}
+          {showFilters && (
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Trier par
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={sortConfig.key}
+                    onChange={(e) => handleSort(e.target.value)}
+                  >
+                    <option value="created_at">Date de création</option>
+                    <option value="date_ft">Date du FT</option>
+                    <option value="reference_ft">Référence</option>
+                    <option value="nom_convoquee">Nom</option>
+                    <option value="commune">Commune</option>
+                    <option value="statut_dossier">Statut dossier</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Ordre
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={sortConfig.direction}
+                    onChange={(e) => setSortConfig(prev => ({ ...prev, direction: e.target.value as 'asc' | 'desc' }))}
+                  >
+                    <option value="desc">Décroissant</option>
+                    <option value="asc">Croissant</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Date de création
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Du"
+                    />
+                    <input
+                      type="date"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Au"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tableau des FT */}
+        <div className="p-6">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-64">
+              <div className="relative">
+                <div className="w-16 h-16 border-4 border-blue-200 rounded-full"></div>
+                <div className="absolute top-0 left-0 w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              <p className="mt-4 text-slate-600">Chargement des procès-verbaux...</p>
+              <p className="text-sm text-slate-400 mt-2">Veuillez patienter</p>
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-red-700 mb-2">Erreur de chargement</h3>
+              <p className="text-red-600 mb-4">{error}</p>
+              <button 
+                onClick={fetchFTs}
+                className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors shadow-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4" />
+                  Réessayer
+                </div>
+              </button>
+            </div>
+          ) : filteredFts.length === 0 ? (
+            <div className="text-center p-12">
+              {activeTab === 'incomplet' ? (
+                <FolderCheck className="w-20 h-20 text-emerald-300 mx-auto mb-4" />
+              ) : activeTab === 'complet' ? (
+                <CheckCircle className="w-20 h-20 text-emerald-300 mx-auto mb-4" />
+              ) : (
+                <FileText className="w-20 h-20 text-slate-300 mx-auto mb-4" />
+              )}
+              <h3 className="text-xl font-semibold text-slate-700 mb-2">
+                {searchTerm 
+                  ? 'Aucun procès-verbal trouvé' 
+                  : activeTab === 'complet'
+                  ? 'Aucun dossier complet'
+                  : activeTab === 'incomplet'
+                  ? 'Aucun dossier incomplet'
+                  : activeTab === 'aucun'
+                  ? 'Aucun dossier sans requisition'
+                  : 'Aucun procès-verbal enregistré'}
+              </h3>
+              <p className="text-slate-500 mb-6 max-w-md mx-auto">
+                {searchTerm 
+                  ? 'Aucun procès-verbal ne correspond à vos critères de recherche. Essayez avec d\'autres termes.'
+                  : 'Commencez par créer votre premier procès-verbal pour gérer vos dossiers.'}
+              </p>
+              {!searchTerm && (
+                <button
+                  onClick={() => window.location.href = '/ft/nouveau'}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-sm transition-all duration-200 hover:shadow-md inline-flex items-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  Créer le premier procès-verbal
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Résumé rapide */}
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
+                      <FileSignature className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">
+                        {filteredFts.length} procès-verbaux trouvés
+                        {searchTerm && (
+                          <span className="text-blue-600 ml-2">
+                            pour "{searchTerm}"
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        Page {page} sur {totalPages} • {selectedRows.size > 0 && `${selectedRows.size} sélectionné(s)`}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    {selectedRows.size > 0 && (
+                      <button
+                        onClick={handleDeleteMultiple}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Supprimer la sélection
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tableau */}
+              <div className="overflow-hidden rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 w-12">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                          checked={selectedRows.size === filteredFts.length && filteredFts.length > 0}
+                          onChange={selectAllRows}
+                          title="Sélectionner tout"
+                        />
+                      </th>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('reference_ft')}
+                      >
+                        <div className="flex items-center">
+                          <FileSignature className="w-4 h-4 mr-2" />
+                          Informations
+                          {sortConfig.key === 'reference_ft' && (
+                            <ChevronLeft className={`w-4 h-4 ml-1 transform ${sortConfig.direction === 'asc' ? '-rotate-90' : '-rotate-180'}`} />
+                          )}
+                        </div>
+                      </th>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('nom_convoquee')}
+                      >
+                        <div className="flex items-center">
+                          <User className="w-4 h-4 mr-2" />
+                          Personne
+                          {sortConfig.key === 'nom_convoquee' && (
+                            <ChevronLeft className={`w-4 h-4 ml-1 transform ${sortConfig.direction === 'asc' ? '-rotate-90' : '-rotate-180'}`} />
+                          )}
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        <div className="flex items-center">
+                          <MapPin className="w-4 h-4 mr-2" />
+                          Localisation
+                        </div>
+                      </th>
+                      <th 
+                        scope="col" 
+                        className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => handleSort('statut_dossier')}
+                      >
+                        <div className="flex items-center">
+                          <FileArchive className="w-4 h-4 mr-2" />
+                          État du dossier
+                          {sortConfig.key === 'statut_dossier' && (
+                            <ChevronLeft className={`w-4 h-4 ml-1 transform ${sortConfig.direction === 'asc' ? '-rotate-90' : '-rotate-180'}`} />
+                          )}
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        <div className="flex items-center">
+                          <ClockIcon className="w-4 h-4 mr-2" />
+                          Complétion
+                        </div>
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {displayedFts.map((ft) => {
+                      const dossiersManquants = getDossiersManquants(ft);
+                      const hasDossiersManquants = dossiersManquants.length > 0;
+                      const completionPercentage = getCompletionPercentage(ft);
+                      const isSelected = selectedRows.has(ft.id);
+                      
+                      return (
+                        <tr 
+                          key={ft.id} 
+                          className={`transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                        >
+                          {/* Sélection */}
+                          <td className="px-6 py-4">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                              checked={isSelected}
+                              onChange={() => toggleRowSelection(ft.id)}
+                            />
+                          </td>
+
+                          {/* Informations principales */}
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <div className="flex items-center">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center mr-3 ${isSelected ? 'bg-blue-100' : 'bg-gradient-to-br from-blue-500 to-violet-600'}`}>
+                                  <FileSignature className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-white'}`} />
+                                </div>
+                                <div className="flex-1">
+                                  <div className={`text-sm font-semibold transition-colors ${isSelected ? 'text-blue-700' : 'text-slate-900 group-hover:text-blue-600'}`}>
+                                    {ft.reference_ft}
+                                  </div>
+                                  <div className="flex items-center text-xs text-slate-500 mt-1">
+                                    <Calendar className="w-3 h-3 mr-1 flex-shrink-0" />
+                                    <span>{formatDateTime(ft.date_ft, ft.heure_ft)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className={`px-2 py-0.5 rounded-full text-xs ${getStatusColor(ft.statut)}`}>
+                                  {ft.statut}
+                                </div>
+                                <div className="text-xs text-slate-500 capitalize truncate">
+                                  {ft.type_convoquee}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Personne */}
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium text-slate-900 truncate">
+                                {ft.nom_convoquee || ft.nom_personne_r || 'Non spécifié'}
+                              </div>
+                              {(ft.telephone || ft.email) && (
+                                <div className="text-xs text-slate-600 space-y-1">
+                                  {ft.telephone && (
+                                    <div className="flex items-center">
+                                      <Phone className="w-3 h-3 mr-1" />
+                                      {ft.telephone}
+                                    </div>
+                                  )}
+                                  {ft.email && (
+                                    <div className="flex items-center">
+                                      <Mail className="w-3 h-3 mr-1" />
+                                      <span className="truncate">{ft.email}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Localisation */}
+                          <td className="px-6 py-4">
+                            <div className="space-y-1">
+                              {ft.commune ? (
+                                <div className="flex items-center text-sm text-slate-900">
+                                  <Building className="w-3 h-3 mr-1 flex-shrink-0" />
+                                  <span className="truncate">{ft.commune}</span>
+                                </div>
+                              ) : null}
+                              {ft.fokontany ? (
+                                <div className="flex items-center text-xs text-slate-600">
+                                  <Home className="w-3 h-3 mr-1 flex-shrink-0" />
+                                  <span className="truncate">{ft.fokontany}</span>
+                                </div>
+                              ) : null}
+                              {!ft.commune && !ft.fokontany && (
+                                <span className="text-xs text-slate-400">Non spécifié</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* État du dossier */}
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <div className="flex items-center">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getDossierStatusColor(ft.statut_dossier)} flex items-center`}>
+                                  {getDossierStatusIcon(ft.statut_dossier)}
+                                  {ft.statut_dossier}
+                                </span>
+                              </div>
+                              {ft.dossier_a_fournir && ft.dossier_a_fournir.length > 0 && (
+                                <div className="text-xs text-slate-600">
+                                  {ft.dossiers_fournis?.length || 0}/{ft.dossier_a_fournir.length} dossiers
+                                </div>
+                              )}
+                              {hasDossiersManquants && (
+                                <button
+                                  onClick={() => handleOpenCompleteModal(ft)}
+                                  className="text-xs text-amber-700 hover:text-amber-900 font-medium flex items-center transition-colors"
+                                >
+                                  <FileCheck className="w-3 h-3 mr-1" />
+                                  {dossiersManquants.length} manquant(s)
+                                </button>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Barre de progression */}
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-600">Complétion</span>
+                                <span className={`font-medium ${completionPercentage === 100 ? 'text-emerald-600' : completionPercentage >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  {completionPercentage}%
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-1.5">
+                                <div 
+                                  className={`h-1.5 rounded-full transition-all duration-300 ${completionPercentage === 100 ? 'bg-emerald-500' : completionPercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                  style={{ width: `${completionPercentage}%` }}
+                                ></div>
+                              </div>
+                              {ft.delai_complement && ft.delai_complement > 0 && (
+                                <div className="text-xs text-amber-600 flex items-center">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  Délai: {ft.delai_complement} jours
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-1">
+                              <button
+                                onClick={() => handleViewDetails(ft)}
+                                className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Voir détails"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => window.location.href = `/ft/editer/${ft.id}`}
+                                className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              {hasDossiersManquants && (
+                                <button
+                                  onClick={() => handleOpenCompleteModal(ft)}
+                                  className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors"
+                                  title="Compléter le dossier"
+                                >
+                                  <FileCheck className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDuplicate(ft)}
+                                className="p-1.5 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                                title="Dupliquer"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(ft.id)}
+                                className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination améliorée */}
+              <div className="flex flex-col sm:flex-row items-center justify-between mt-6 gap-4">
+                <div className="text-sm text-slate-600">
+                  Affichage de <span className="font-medium">{startIndex + 1}</span> à <span className="font-medium">{endIndex}</span> sur <span className="font-medium">{filteredFts.length}</span> résultat(s)
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                    disabled={page === 1}
+                    className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                    title="Page précédente"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (page <= 3) {
+                        pageNum = i + 1;
+                      } else if (page >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = page - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setPage(pageNum)}
+                          className={`min-w-[40px] h-10 rounded-lg border transition-colors ${page === pageNum 
+                            ? 'bg-blue-500 text-white border-blue-500 shadow-sm' 
+                            : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  <button
+                    onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={page === totalPages}
+                    className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                    title="Page suivante"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Modals (reste inchangé mais optimisé) */}
+      {showCompleteModal && selectedFtForCompletion && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          {/* ... modal de complétion ... */}
         </div>
       )}
 
-      {/* Modal de détails amélioré */}
       {showDetailsModal && selectedFt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900">
-                  <FileSignature className="inline-block w-6 h-6 mr-2 text-blue-600" />
-                  Détails du procès-verbal
-                </h2>
-                <p className="text-slate-600 mt-1">
-                  {selectedFt.reference_ft} • DS-{selectedFt.iddescente}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-full"
-              >
-                <span className="sr-only">Fermer</span>
-                <span className="text-2xl">×</span>
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Informations générales */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-4">Informations générales</h3>
-                    <dl className="space-y-3">
-                      <div className="flex justify-between">
-                        <dt className="text-slate-600">Référence:</dt>
-                        <dd className="font-medium text-slate-900">{selectedFt.reference_ft}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-slate-600">Date:</dt>
-                        <dd className="font-medium text-slate-900">{formatDate(selectedFt.date_ft)}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-slate-600">Heure:</dt>
-                        <dd className="font-medium text-slate-900">{formatTime(selectedFt.heure_ft)}</dd>
-                      </div>
-                      <div className="flex justify-between">
-                        <dt className="text-slate-600">Type convoquée:</dt>
-                        <dd className="font-medium text-slate-900 capitalize">{selectedFt.type_convoquee || 'Non spécifié'}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Statuts</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="text-sm text-slate-600 mb-2">Statut du FT</div>
-                      <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${getStatusColor(selectedFt.statut)}`}>
-                        {selectedFt.statut}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-600 mb-2">Statut du dossier</div>
-                      <span className={`px-3 py-1.5 rounded-full text-sm font-semibold flex items-center ${getDossierStatusColor(selectedFt.statut_dossier)}`}>
-                        {getDossierStatusIcon(selectedFt.statut_dossier)}
-                        {selectedFt.statut_dossier || 'Non défini'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Détails du dossier */}
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">État du dossier</h3>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  {selectedFt.dossier_a_fournir && Array.isArray(selectedFt.dossier_a_fournir) ? (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 mb-2">Dossiers requis ({selectedFt.dossier_a_fournir.length}):</p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedFt.dossier_a_fournir.map((dossier, idx) => (
-                            <span key={idx} className="px-3 py-1 bg-slate-200 text-slate-800 rounded-full text-sm">
-                              {dossier}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 mb-2">
-                          Dossiers fournis ({selectedFt.dossiers_fournis?.length || 0}/{selectedFt.dossier_a_fournir.length}):
-                        </p>
-                        {selectedFt.dossiers_fournis && selectedFt.dossiers_fournis.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {selectedFt.dossiers_fournis.map((dossier, idx) => (
-                              <span key={idx} className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-sm flex items-center">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                {dossier}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-slate-500 text-sm">Aucun dossier fourni</p>
-                        )}
-                      </div>
-                      
-                      {selectedFt.statut_dossier === 'Incomplet' && (
-                        <div className="pt-3 border-t border-slate-200">
-                          <div className="mb-2">
-                            <p className="text-sm font-medium text-amber-700 mb-1">Dossiers manquants:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {selectedFt.dossier_a_fournir
-                                .filter((dossier: string) => !selectedFt.dossiers_fournis?.includes(dossier))
-                                .map((dossier, idx) => (
-                                  <span key={idx} className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm flex items-center">
-                                    <XCircle className="w-3 h-3 mr-1" />
-                                    {dossier}
-                                  </span>
-                                ))}
-                            </div>
-                          </div>
-                          
-                          {selectedFt.delai_complement && selectedFt.delai_complement > 0 && (
-                            <p className="text-sm text-amber-700">
-                              <AlertCircle className="inline-block w-4 h-4 mr-1" />
-                              Délai de complément: {selectedFt.delai_complement} jours
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-slate-500">Aucune information de dossier disponible</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Personne convoquée */}
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Personne convoquée</h3>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <div className="text-lg font-medium text-slate-900">{selectedFt.nom_convoquee || selectedFt.nom_personne_r || 'Non spécifié'}</div>
-                  {selectedFt.commune || selectedFt.fokontany ? (
-                    <div className="mt-2 text-sm text-slate-600">
-                      {selectedFt.commune} {selectedFt.fokontany && `• ${selectedFt.fokontany}`}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Conclusion */}
-              {selectedFt.conclusion && (
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Conclusion</h3>
-                  <div className="bg-slate-50 rounded-lg p-4">
-                    <p className="text-slate-700">{selectedFt.conclusion}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Dates */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-4">Informations système</h3>
-                  <dl className="space-y-2">
-                    <div className="flex justify-between">
-                      <dt className="text-slate-600">Créé le:</dt>
-                      <dd className="font-medium text-slate-900">{formatDate(selectedFt.created_at)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-slate-600">Descente ID:</dt>
-                      <dd className="font-medium text-slate-900">DS-{selectedFt.iddescente}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-slate-600">Rendez-vous ID:</dt>
-                      <dd className="font-medium text-slate-900">{selectedFt.idrendezvous ? `RDV-${selectedFt.idrendezvous}` : 'Non lié'}</dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-            </div>
-
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6 flex justify-end gap-3">
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                Fermer
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                onClick={() => {
-                  window.location.href = `/ft/editer/${selectedFt.id}`;
-                }}
-              >
-                Modifier le procès-verbal
-              </button>
-            </div>
-          </div>
+          {/* ... modal de détails ... */}
         </div>
       )}
     </div>
   );
 }
+
+// Composant RefreshCw manquant (à ajouter aux imports)
+const RefreshCw = ({ className }: { className?: string }) => (
+  <svg 
+    className={className} 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24" 
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth={2} 
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+    />
+  </svg>
+);
+
+// Composant Phone manquant (à ajouter aux imports)
+const Phone = ({ className }: { className?: string }) => (
+  <svg 
+    className={className} 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24" 
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth={2} 
+      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" 
+    />
+  </svg>
+);

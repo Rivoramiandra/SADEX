@@ -11,16 +11,13 @@ import 'leaflet/dist/leaflet.css';
 import proj4 from 'proj4';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { toast } from 'react-hot-toast';
-
+import toast, { Toaster } from 'react-hot-toast';
 // ==================== ALGORITHMES DE CALCUL ====================
-
 export interface CalculResult {
   redevance: number;
   amende: number;
   calcul_redevance: boolean;
 }
-
 export const mapDestinationToAttraction = (destination: string): 'H' | 'I' | 'C' => {
   switch (destination) {
     case 'HABITATION':
@@ -33,7 +30,6 @@ export const mapDestinationToAttraction = (destination: string): 'H' | 'I' | 'C'
       return 'H';
   }
 };
-
 export const calculerTaxesComplet = (
   zone_type: 'constructible' | 'inconstructible',
   type_attraction: 'H' | 'I' | 'C',
@@ -45,10 +41,9 @@ export const calculerTaxesComplet = (
     amende: 0,
     calcul_redevance: false
   };
-
   if (zone_type === 'constructible') {
     resultats.calcul_redevance = true;
-    
+   
     if (zone_geographique === 'CUA') {
       if (superficie < 100) {
         resultats.redevance = type_attraction === 'H' ? 6250 : 12500;
@@ -91,7 +86,7 @@ export const calculerTaxesComplet = (
   } else if (zone_type === 'inconstructible') {
     resultats.calcul_redevance = false;
     resultats.redevance = 0;
-    
+   
     if (zone_geographique === 'CUA') {
       if (superficie < 100) {
         resultats.amende = type_attraction === 'H' ? 12500 : 25000;
@@ -114,33 +109,29 @@ export const calculerTaxesComplet = (
       }
     }
   }
-
   return resultats;
 };
-
 export const getTypePaiementSelonZone = (zone_type: 'constructible' | 'inconstructible'): 'amende' | 'redevance' | 'total' => {
   return zone_type === 'inconstructible' ? 'amende' : 'total';
 };
-
 export const formatNumber = (num: string | number): string => {
   if (!num) return '0';
   const numValue = typeof num === 'string' ? parseFloat(num) : num;
   if (isNaN(numValue)) return '0';
   return new Intl.NumberFormat('fr-FR').format(numValue);
 };
-
 export const convertToLetters = (amount: number): string => {
   const units = ['', 'UN', 'DEUX', 'TROIS', 'QUATRE', 'CINQ', 'SIX', 'SEPT', 'HUIT', 'NEUF'];
   const teens = ['DIX', 'ONZE', 'DOUZE', 'TREIZE', 'QUATORZE', 'QUINZE', 'SEIZE', 'DIX-SEPT', 'DIX-HUIT', 'DIX-NEUF'];
   const tens = ['', 'DIX', 'VINGT', 'TRENTE', 'QUARANTE', 'CINQUANTE', 'SOIXANTE', 'SOIXANTE-DIX', 'QUATRE-VINGT', 'QUATRE-VINGT-DIX'];
-  
+ 
   if (amount === 0) return 'ZÉRO';
-  
+ 
   let result = '';
   const millions = Math.floor(amount / 1000000);
   const thousands = Math.floor((amount % 1000000) / 1000);
   const remainder = amount % 1000;
-  
+ 
   if (millions > 0) {
     if (millions === 1) {
       result += 'UN MILLION ';
@@ -148,7 +139,7 @@ export const convertToLetters = (amount: number): string => {
       result += convertSmallNumber(millions) + ' MILLIONS ';
     }
   }
-  
+ 
   if (thousands > 0) {
     if (thousands === 1) {
       result += 'MILLE ';
@@ -156,13 +147,13 @@ export const convertToLetters = (amount: number): string => {
       result += convertSmallNumber(thousands) + ' MILLE ';
     }
   }
-  
+ 
   if (remainder > 0) {
     result += convertSmallNumber(remainder);
   }
-  
+ 
   return result.trim() + ' ARIARY';
-  
+ 
   function convertSmallNumber(num: number): string {
     if (num === 0) return '';
     if (num < 10) return units[num];
@@ -184,12 +175,9 @@ export const convertToLetters = (amount: number): string => {
     return units[hundred] + ' CENT' + (rest === 0 ? 'S' : ' ' + convertSmallNumber(rest));
   }
 };
-
 // ==================== SYSTEMES DE COORDONNEES ====================
-
 const lambertMadagascar = '+proj=lcc +lat_1=-18.9 +lat_2=-18.9 +lat_0=-18.9 +lon_0=46.43722916666667 +x_0=400000 +y_0=800000 +ellps=intl +towgs84=-189,-242,-91,0,0,0,0 +units=m +no_defs';
 const wgs84 = '+proj=longlat +datum=WGS84 +no_defs';
-
 const convertLambertToWGS84 = (x: number, y: number): { lat: number, lng: number } => {
   try {
     const result = proj4(lambertMadagascar, wgs84, [x, y]);
@@ -205,9 +193,7 @@ const convertLambertToWGS84 = (x: number, y: number): { lat: number, lng: number
     };
   }
 };
-
 // ==================== INTERFACES ====================
-
 interface FT {
   id: number;
   reference_ft: string;
@@ -238,7 +224,6 @@ interface FT {
   dossier_a_fournir?: string[];
   delai_complement?: number;
 }
-
 interface Descente {
   id?: number;
   reference?: string;
@@ -266,30 +251,27 @@ interface Descente {
   statut_descente?: string;
   created_at?: string;
 }
-
 interface FaireApProps {
   ft?: FT;
   onClose?: () => void;
   onSuccess?: () => void;
 }
-
 // ==================== FONCTIONS UTILITAIRES POUR PDF ====================
-
 const getImageAsBase64 = async (imagePath: string): Promise<string> => {
   try {
-    const fullUrl = imagePath.startsWith('http') 
-      ? imagePath 
+    const fullUrl = imagePath.startsWith('http')
+      ? imagePath
       : `${window.location.origin}${imagePath.startsWith('/') ? imagePath : `/${imagePath}`}`;
-    
+   
     const response = await fetch(fullUrl);
-    
+   
     if (!response.ok) {
       console.warn(`Image non trouvée: ${imagePath}, utilisation d'une image par défaut`);
       return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idHJhbnNwYXJlbnQiLz48L3N2Zz4=';
     }
-    
+   
     const blob = await response.blob();
-    
+   
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -307,7 +289,6 @@ const getImageAsBase64 = async (imagePath: string): Promise<string> => {
     return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idHJhbnNwYXJlbnQiLz48L3N2Zz4=';
   }
 };
-
 const formatDate = (dateString: string): string => {
   if (!dateString) return '';
   try {
@@ -321,9 +302,7 @@ const formatDate = (dateString: string): string => {
     return dateString;
   }
 };
-
 // ==================== COMPOSANT PRINCIPAL ====================
-
 const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
   const [selectedFt, setSelectedFt] = useState<FT | null>(null);
   const [descenteData, setDescenteData] = useState<Descente | null>(null);
@@ -339,17 +318,16 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
   });
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
-  
+  const [errors, setErrors] = useState<Record<string, string>>({});
+ 
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<L.Marker | null>(null);
-
   const [calculDetails, setCalculDetails] = useState({
     redevance: 0,
     amende: 0,
     total: 0
   });
-
   const [formData, setFormData] = useState({
     iddescente: ft?.iddescente || 0,
     idft: ft?.id || 0,
@@ -363,28 +341,36 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     montant_lettre: '',
     fin_premier_paiement: '',
     contact: ft?.contact || '',
-    
+   
     zone_type: 'constructible' as 'constructible' | 'inconstructible',
     type_payment: 'total' as 'amende' | 'redevance' | 'total',
     valeur_unitaire: '',
     montant_total: '',
     motif: ''
   });
-
   // ==================== FONCTIONS UTILITAIRES ====================
+const customToast = {
+  error: (message: string) =>
+    toast.error(message, {
+      position: "top-right",
+      style: { background: "black", color: "white" }
+    }),
 
+  success: (message: string) =>
+    toast.success(message, {
+      position: "top-right",
+      style: { background: "black", color: "white" }
+    })
+};
   const cleanJsonString = (str: any): string => {
     if (str === null || str === undefined) {
       return '';
     }
-
     let cleanStr = typeof str === 'string' ? str : String(str);
     cleanStr = cleanStr.trim();
-
     if (cleanStr === '') {
       return '';
     }
-
     if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
       try {
         const parsed = JSON.parse(cleanStr);
@@ -397,22 +383,19 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         console.debug('JSON parsing failed, continuing with normal cleaning:', error);
       }
     }
-
     if ((cleanStr.startsWith('"') && cleanStr.endsWith('"')) ||
         (cleanStr.startsWith("'") && cleanStr.endsWith("'"))) {
       cleanStr = cleanStr.slice(1, -1);
     }
-
     return cleanStr;
   };
-
   const extractInfractionText = (infraction: any): string => {
     if (!infraction) return '';
-    
+   
     if (typeof infraction === 'string') {
       return infraction;
     }
-    
+   
     if (typeof infraction === 'object') {
       try {
         if (infraction.description) return String(infraction.description);
@@ -424,15 +407,14 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
         return 'Infraction non textuelle';
       }
     }
-    
+   
     return String(infraction);
   };
-
   const determineZoneConstructible = (infraction?: any): 'constructible' | 'inconstructible' => {
     if (!infraction) return 'constructible';
-    
+   
     const infractionText = extractInfractionText(infraction).toLowerCase();
-    if (infractionText.includes('inconstructible') || 
+    if (infractionText.includes('inconstructible') ||
         infractionText.includes('zone rouge') ||
         infractionText.includes('zone inondable') ||
         infractionText.includes('non constructible') ||
@@ -441,14 +423,13 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
     }
     return 'constructible';
   };
-
   const calculerValeurs = () => {
     const superficie = parseFloat(formData.superficie_remblai) || 0;
     const zoneGeographique = formData.zone_geo;
     const typePayment = formData.type_payment;
     const destination = formData.destination;
     const zoneConstructible = formData.zone_type;
-    
+   
     if (superficie <= 0) {
       setCalculDetails({ redevance: 0, amende: 0, total: 0 });
       setFormData(prev => ({
@@ -460,20 +441,19 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
       }));
       return;
     }
-    
+   
     const typeAttraction = mapDestinationToAttraction(destination);
     const calcul = calculerTaxesComplet(zoneConstructible, typeAttraction, superficie, zoneGeographique);
-    
+   
     const totalCalcul = calcul.redevance + calcul.amende;
     setCalculDetails({
       redevance: calcul.redevance,
       amende: calcul.amende,
       total: totalCalcul
     });
-    
+   
     let valeurUnitaire = 0;
     let montantTotal = 0;
-
     if (zoneConstructible === 'constructible') {
       if (typePayment === 'total') {
         valeurUnitaire = totalCalcul;
@@ -489,7 +469,7 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
       valeurUnitaire = calcul.amende;
       montantTotal = superficie * calcul.amende;
     }
-    
+   
     setFormData(prev => ({
       ...prev,
       valeur_unitaire: valeurUnitaire.toFixed(0),
@@ -498,24 +478,21 @@ const FaireAp: React.FC<FaireApProps> = ({ ft, onClose, onSuccess }) => {
       montant_lettre: montantTotal > 0 ? convertToLetters(montantTotal) : ''
     }));
   };
-
   // ==================== FONCTION GENERATEPDF COMPLETE ====================
-
 // ==================== FONCTION GENERATEPDF CORRIGEE ====================
-
 // Fonction pour générer et télécharger le PDF
 const generatePDF = async () => {
   // Déclarer pdfContent en dehors du bloc try pour qu'il soit accessible dans le finally
   let pdfContent: HTMLDivElement | null = null;
-  
+ 
   if (!descenteData) {
-    toast.error('Veuillez d\'abord charger les données de la descente');
+    customToast.error('Veuillez d\'abord charger les données de la descente');
     return;
   }
-  
+ 
   const prepareFTDataForPDF = () => {
     if (!selectedFt || !descenteData) return null;
-    
+   
     return {
       referenceFT: selectedFt.reference_ft,
       currentDate: formatDate(new Date().toISOString()),
@@ -543,13 +520,13 @@ const generatePDF = async () => {
       mesure: selectedFt.conclusion || ''
     };
   };
-  
+ 
   const preparedData = prepareFTDataForPDF();
   if (!preparedData) {
-    toast.error('Impossible de préparer les données pour le PDF');
+    customToast.error('Impossible de préparer les données pour le PDF');
     return;
   }
-  
+ 
   try {
     setGeneratingPDF(true);
     // Charger toutes les images en Base64
@@ -558,7 +535,7 @@ const generatePDF = async () => {
       getImageAsBase64('/images/emblème_vf.png'),
       getImageAsBase64('/images/footer.png')
     ]);
-    
+   
     // Créer un élément div temporaire pour le rendu HTML avec DEUX pages séparées
     pdfContent = document.createElement('div');
     pdfContent.style.position = 'fixed';
@@ -568,7 +545,7 @@ const generatePDF = async () => {
     pdfContent.style.backgroundColor = 'white';
     pdfContent.style.boxSizing = 'border-box';
     pdfContent.style.overflow = 'hidden';
-    
+   
     // Créer un conteneur pour chaque page séparément
     const page1 = document.createElement('div');
     page1.className = 'pdf-page pdf-page-1';
@@ -580,7 +557,7 @@ const generatePDF = async () => {
     page1.style.margin = '0';
     page1.style.padding = '0';
     page1.style.boxSizing = 'border-box';
-    
+   
     const page2 = document.createElement('div');
     page2.className = 'pdf-page pdf-page-2';
     page2.style.width = '210mm';
@@ -591,19 +568,19 @@ const generatePDF = async () => {
     page2.style.margin = '0';
     page2.style.padding = '0';
     page2.style.boxSizing = 'border-box';
-    
+   
     // Appliquer les styles directement
     const styles = `
       @media print {
         @page { margin: 0; size: A4; }
         body { margin: 0; }
-        .pdf-page { 
-          width: 210mm; 
-          height: 297mm; 
+        .pdf-page {
+          width: 210mm;
+          height: 297mm;
           page-break-after: always;
         }
       }
-      
+     
       .pdf-header {
         height: 180px;
         width: 100%;
@@ -612,7 +589,7 @@ const generatePDF = async () => {
         background-repeat: no-repeat;
         margin-bottom: 20px;
       }
-      
+     
       .pdf-emblem {
         height: 90px;
         width: 90%;
@@ -624,7 +601,7 @@ const generatePDF = async () => {
         background-position: center center;
         margin: 0 auto;
       }
-      
+     
       .pdf-footer {
         height: 250px;
         background-image: url('${footerImage}');
@@ -636,65 +613,64 @@ const generatePDF = async () => {
         bottom: 0;
         width: 100%;
       }
-      
+     
       .pdf-content {
         font-family: 'Times New Roman', serif;
         font-size: 12px;
         line-height: 1.5;
         color: #000;
       }
-      
+     
       .pdf-table {
         width: 100%;
         border-collapse: collapse;
         position:relative;
         top:-50px;
       }
-      
+     
       .pdf-table td {
         vertical-align: top;
         padding: 2px;
       }
-      
+     
       .info-table {
         border: 1px solid black;
         margin: 5mm 0;
       }
-      
+     
       .info-table td, .info-table th {
         border: 1px solid black;
         padding: 3px;
         text-align: center;
       }
-      
+     
       .text-center { text-align: center; }
       .text-right { text-align: right; }
       .text-left { text-align: left; }
-      
+     
       .document-title {
         font-size: 14px;
         font-weight: bold;
         text-decoration: underline;
-
       }
-      
+     
       .content-block1 {
         margin-bottom: 4mm;
         padding: 50px;
-  
+ 
       }
-      
+     
       .content-block2 {
         padding: 50px;
       }
-      
+     
       .signature-section {
         margin-top: 15mm;
         position: relative;
         bottom: 70px;
       }
     `;
-    
+   
     // Contenu de la page 1
     page1.innerHTML = `
       <style>${styles}</style>
@@ -722,27 +698,25 @@ const generatePDF = async () => {
             </td>
           </tr>
         </table>
-
         <div class="document-title text-center">
           Avis de Paiement n°<u>${formData.num_ap.replace('AP-', '')}</u>
         </div>
-        
+       
         <div class="content-block1">
           <p>En application des dispositions du <em>décret n°2019-1543 du 11 septembre 2019 portant régulation de l'exécution des travaux de remblaiement dans les zones d'intervention de l'APIPA, en application de la loi n°2015-052 du 03 février 2016 relative à l'Urbanisme et à l'Habitat</em> ;</p>
-          
+         
           <p>Vu le rapport de descente n°${descenteData.reference || 'DS-XXX'} en date du ${formatDate(descenteData.date_descente || '')} effectué par l'équipe composée des Polices de l'Aménagement du Territoire/Brigade Spéciale ;</p>
-          
+         
           <p>Vu le certificat de situation juridique de la propriété dite ${selectedFt.nom_propriete || 'NON SPECIFIE'} sise à ${descenteData.commune || ''} en date du ${formatDate(selectedFt.created_at)} ;</p>
-          
+         
           <p>Vu le plan officiel ;</p>
-          
+         
           <p>Par la présente,</p>
-          
+         
           <p>Nous vous informons que le montant de <strong>${formData.montant_lettre}</strong> (<strong>${formatNumber(formData.montant)} Ar</strong>), dont les détails se trouvent au verso de ce document, est dû à l'Autorité pour la Protection contre les Inondations de la Plaine d'Antananarivo (APIPA) à titre <u>d'<strong>${formData.zone_type === 'inconstructible' ? 'AMENDE' : 'AMENDE/REDEVANCE'}</strong></u> relative aux travaux de remblai et/ou de déblai illicites effectués sur votre propriété correspondant aux coordonnées « X = ${descenteData.x_coord || 'N/A'} et Y = ${descenteData.y_coord || 'N/A'}»</p>
-          
-          <p>Vous êtes contraint de procéder au règlement de ce montant dans les quinzaines (15 jours) à compter de la réception de la présente par le moyen <em>d'un chèque de banque dûment légalisé par l'établissement bancaire auquel vous êtes affilié, et adressé à l'ordre de « Monsieur l'Agent Comptable de l'Autorité pour la Protection contre les Inondations de la Plaine d'Antananarivo (APIPA) ».</em></p>
+         
+          <p>Vous êtes contraint de règlement de ce montant dans les quinzaines (15 jours) à compter de la réception de la présente par le moyen <em>d'un chèque de banque dûment légalisé par l'établissement bancaire auquel vous êtes affilié, et adressé à l'ordre de « Monsieur l'Agent Comptable de l'Autorité pour la Protection contre les Inondations de la Plaine d'Antananarivo (APIPA) ».</em></p>
         </div>
-
         <table class="signature-section">
           <tr>
             <td style="width: 60%;"></td>
@@ -755,7 +729,7 @@ const generatePDF = async () => {
         <div class="pdf-footer"></div>
       </div>
     `;
-    
+   
     // Contenu de la page 2
     page2.innerHTML = `
       <style>${styles}</style>
@@ -763,19 +737,19 @@ const generatePDF = async () => {
       <div class="pdf-content">
         <div class="content-block2">
           <p><strong><u>INFORMATIONS FONCIERES</u> :</strong></p>
-          
-          <p><strong><u>Titre N°:</u></strong> ${selectedFt.titre_terrain || 'NON SPECIFIE'}</p>
-          
+         
+          <p><strong><u>Titre N°:</u></strong> ${selectedFt.titre_terrain || 'N/A'}</p>
+         
           <p><strong><u>Coordonnées :</u></strong></p>
           <p>X = ${descenteData.x_coord || 'N/A'}</p>
           <p>Y = ${descenteData.y_coord || 'N/A'}</p>
-          
+         
           <p><strong><u>Localisation :</u></strong> ${descenteData.commune || ''}</p>
         </div>
-        
+       
         <div style="padding: 50px; position: relative; top: -50px;">
           <p><strong><u>TABLEAU PORTANT REFERENCE DE CALCUL</u> :</strong></p>
-          
+         
           <table class="info-table">
             <tr>
               <th style="width: 20%;">N° Titre</th>
@@ -792,10 +766,10 @@ const generatePDF = async () => {
               <td>${formatNumber(formData.montant)} Ar</td>
             </tr>
           </table>
-          
+         
           <p>Le montant total à payer s'élève à ${formData.montant_lettre}.</p>
         </div>
-        
+       
         <table class="signature-section" style="position: relative; top: -30px;">
           <tr>
             <td style="width: 50%;"></td>
@@ -809,27 +783,27 @@ const generatePDF = async () => {
       </div>
       <div class="pdf-footer"></div>
     `;
-    
+   
     // Ajouter les pages au conteneur principal
     pdfContent.appendChild(page1);
     pdfContent.appendChild(page2);
-    
+   
     // Ajouter le div au body pour le rendu
     document.body.appendChild(pdfContent);
-    
+   
     // Attendre le rendu complet (images chargées)
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+   
     // Créer le PDF avec jsPDF
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4'
     });
-    
+   
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
-    
+   
     // Capturer et ajouter la première page
     const canvas1 = await html2canvas(page1, {
       scale: 2,
@@ -841,13 +815,13 @@ const generatePDF = async () => {
       windowWidth: 793,
       windowHeight: 1122
     });
-    
+   
     const imgData1 = canvas1.toDataURL('image/png', 1.0);
     pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-    
+   
     // Ajouter la deuxième page
     pdf.addPage();
-    
+   
     // Capturer et ajouter la deuxième page
     const canvas2 = await html2canvas(page2, {
       scale: 2,
@@ -859,17 +833,17 @@ const generatePDF = async () => {
       windowWidth: 793,
       windowHeight: 1122
     });
-    
+   
     const imgData2 = canvas2.toDataURL('image/png', 1.0);
     pdf.addImage(imgData2, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-    
+   
     // Télécharger le PDF
     pdf.save(`Avis_Paiement_AP_${formData.num_ap}.pdf`);
-    toast.success('PDF généré et téléchargé avec succès!');
-    
+    customToast.success('PDF généré et téléchargé avec succès!');
+   
   } catch (error) {
     console.error('Erreur lors de la génération du PDF:', error);
-    toast.error(`Erreur lors de la génération du PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    customToast.error(`Erreur lors de la génération du PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
   } finally {
     // Nettoyer le div temporaire
     if (pdfContent && pdfContent.parentNode) {
@@ -878,55 +852,45 @@ const generatePDF = async () => {
     setGeneratingPDF(false);
   }
 };
-
   // ==================== GESTION DE LA CARTE ====================
-
   const initializeMap = () => {
     if (!mapContainerRef.current || mapRef.current) return;
-
     try {
       mapRef.current = L.map(mapContainerRef.current).setView([-18.8792, 47.5079], 15);
-
       const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
       });
-
       const satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
         attribution: 'Imagery © <a href="https://maps.google.com">Google Maps</a>',
         maxZoom: 19
       });
-
       satellite.addTo(mapRef.current);
-
       L.control.layers({
         "Vue standard 🗺️": osm,
         "Vue satellite 🌍": satellite
       }).addTo(mapRef.current);
-
       updateMapWithDescenteData();
-
     } catch (error) {
       console.error('Erreur lors de l\'initialisation de la carte:', error);
     }
   };
-
   const updateMapWithDescenteData = () => {
     if (!mapRef.current || !descenteData) return;
-    
+   
     try {
       const xCoord = descenteData.x_coord ? parseFloat(descenteData.x_coord) : null;
       const yCoord = descenteData.y_coord ? parseFloat(descenteData.y_coord) : null;
-      
+     
       if (xCoord && yCoord) {
         const coords = convertLambertToWGS84(xCoord, yCoord);
-        
+       
         if (markerRef.current) {
           mapRef.current.removeLayer(markerRef.current);
         }
-        
+       
         markerRef.current = L.marker([coords.lat, coords.lng]);
-        
+       
         markerRef.current.bindPopup(`
           <div style="font-family: Arial, sans-serif; padding: 10px;">
             <strong>📍 Localisation du terrain</strong><br/>
@@ -940,11 +904,11 @@ const generatePDF = async () => {
             Y: ${yCoord.toLocaleString()}
           </div>
         `);
-        
+       
         markerRef.current.addTo(mapRef.current);
         mapRef.current.setView([coords.lat, coords.lng], 15);
         markerRef.current.openPopup();
-        
+       
       } else {
         mapRef.current.setView([-18.8792, 47.5079], 13);
         L.popup()
@@ -952,12 +916,11 @@ const generatePDF = async () => {
           .setContent('<div style="padding: 10px;">Aucune coordonnée disponible pour cette descente</div>')
           .openOn(mapRef.current);
       }
-      
+     
     } catch (error) {
       console.error('Erreur lors de la mise à jour de la carte:', error);
     }
   };
-
   const resizeMap = () => {
     if (mapRef.current) {
       setTimeout(() => {
@@ -965,15 +928,12 @@ const generatePDF = async () => {
       }, 100);
     }
   };
-
   const centerMapOnLocation = () => {
     if (descenteData && mapRef.current) {
       updateMapWithDescenteData();
     }
   };
-
   // ==================== USE EFFECTS ====================
-
   useEffect(() => {
     if (!ft) {
       fetchFTsComplets();
@@ -989,13 +949,11 @@ const generatePDF = async () => {
       }));
     }
   }, [ft]);
-
   useEffect(() => {
     if (selectedFt && selectedFt.id) {
       fetchDescenteData(selectedFt.id);
     }
   }, [selectedFt]);
-
   useEffect(() => {
     if (selectedFt) {
       setFormData(prev => ({
@@ -1008,29 +966,25 @@ const generatePDF = async () => {
       }));
     }
   }, [selectedFt]);
-
   useEffect(() => {
     if (descenteData && !mapRef.current && mapContainerRef.current) {
       initializeMap();
     }
-    
+   
     if (expandedSections.carte && mapRef.current) {
       resizeMap();
     }
   }, [expandedSections.carte, descenteData]);
-
   useEffect(() => {
     if (descenteData && mapRef.current) {
       updateMapWithDescenteData();
     }
   }, [descenteData]);
-
   useEffect(() => {
     if (formData.superficie_remblai && parseFloat(formData.superficie_remblai) > 0) {
       calculerValeurs();
     }
   }, [formData.zone_geo, formData.destination, formData.superficie_remblai, formData.zone_type, formData.type_payment]);
-
   useEffect(() => {
     if (descenteData?.infraction) {
       const zoneType = determineZoneConstructible(descenteData.infraction);
@@ -1040,7 +994,6 @@ const generatePDF = async () => {
       }));
     }
   }, [descenteData]);
-
   useEffect(() => {
     const typePaiement = getTypePaiementSelonZone(formData.zone_type);
     setFormData(prev => ({
@@ -1048,7 +1001,6 @@ const generatePDF = async () => {
       type_payment: typePaiement
     }));
   }, [formData.zone_type]);
-
   useEffect(() => {
     return () => {
       if (mapRef.current) {
@@ -1057,15 +1009,13 @@ const generatePDF = async () => {
       }
     };
   }, []);
-
   // ==================== FONCTIONS D'API ====================
-
   const fetchFTsComplets = async () => {
     try {
       setLoading(true);
       const response = await fetch('http://localhost:3000/api/ft?statut_dossier=Complet&limit=50');
       const result = await response.json();
-      
+     
       if (result.success) {
         setFts(result.data || []);
       }
@@ -1075,22 +1025,20 @@ const generatePDF = async () => {
       setLoading(false);
     }
   };
-
   const fetchDescenteData = async (ftId: number) => {
     try {
       setLoadingDescente(true);
-      
+     
       const response = await fetch(`http://localhost:3000/api/ft/${ftId}/with-descente`);
-      
+     
       if (!response.ok) {
         throw new Error(`Erreur ${response.status} lors de la récupération des données`);
       }
-
       const result = await response.json();
-      
+     
       if (result.success && result.data) {
         const ftData = result.data;
-        
+       
         const descenteInfo: Descente = {
           id: ftData.iddescente,
           reference: `DS-${ftData.iddescente}`,
@@ -1113,14 +1061,14 @@ const generatePDF = async () => {
           type_verbalisateur: ftData.type_verbalisateur,
           statut_descente: ftData.statut_descente
         };
-        
+       
         setDescenteData(descenteInfo);
       } else {
         throw new Error(result.message || 'Données non disponibles');
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement de la descente:', error);
-      
+     
       if (selectedFt) {
         setDescenteData({
           id: selectedFt.iddescente,
@@ -1138,9 +1086,7 @@ const generatePDF = async () => {
       setLoadingDescente(false);
     }
   };
-
   // ==================== GESTION DES ÉVÉNEMENTS ====================
-
   const handleSelectFt = (ft: FT) => {
     setSelectedFt(ft);
     setShowFtSelection(false);
@@ -1153,24 +1099,57 @@ const generatePDF = async () => {
       motif: ft.conclusion || ft.dossier || ''
     }));
   };
-
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
   };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    // Validate single field
+    validateField(name, value);
   };
-
   const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    validateField(name, value);
   };
-
+  const validateField = (name: string, value: string) => {
+    let error = '';
+    switch (name) {
+      case 'superficie_remblai':
+        if (!value || parseFloat(value) <= 0) error = 'Superficie requise et positive';
+        break;
+      case 'date_ap':
+        if (!value) error = 'Date requise';
+        break;
+      case 'contact':
+        if (!value) error = 'Contact requis';
+        break;
+      case 'montant':
+        if (!value || parseFloat(value) <= 0) error = 'Montant invalide';
+        break;
+    }
+    setErrors(prev => {
+      if (error) {
+        return { ...prev, [name]: error };
+      } else {
+        const { [name]: _, ...rest } = prev;
+        return rest;
+      }
+    });
+  };
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.superficie_remblai || parseFloat(formData.superficie_remblai) <= 0) newErrors.superficie_remblai = 'Superficie requise et positive';
+    if (!formData.date_ap) newErrors.date_ap = 'Date requise';
+    if (!formData.contact) newErrors.contact = 'Contact requis';
+    if (!formData.montant || parseFloat(formData.montant) <= 0) newErrors.montant = 'Montant invalide';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
   const formatDateTime = (dateString?: string, timeString?: string) => {
     if (!dateString) return 'Non spécifié';
     try {
@@ -1185,35 +1164,28 @@ const generatePDF = async () => {
       return dateString;
     }
   };
-
   const formatTime = (timeString: string) => {
     if (!timeString) return '';
     return timeString.substring(0, 5);
   };
-
   const formatMontant = (montant: string) => {
     const num = parseFloat(montant);
     return isNaN(num) ? '0 Ar' : num.toLocaleString('fr-FR') + ' Ar';
   };
-
   const formatSuperficie = (superficie: string) => {
     const num = parseFloat(superficie);
     return isNaN(num) ? '0 m²' : num.toLocaleString('fr-FR') + ' m²';
   };
-
   const getLocationText = () => {
     if (!descenteData) return 'Non spécifié';
-
     const parts = [
       descenteData.adresse_r,
       descenteData.commune,
       descenteData.fokontany,
       descenteData.district
     ].filter(Boolean);
-
     return parts.length > 0 ? parts.join(', ') : 'Non spécifié';
   };
-
   const getDossierStatusColor = (status: string) => {
     switch (status) {
       case 'Complet':
@@ -1224,39 +1196,24 @@ const generatePDF = async () => {
         return 'bg-yellow-100 text-yellow-800 border-yellow-200';
     }
   };
-
   // ==================== SOUMISSION DU FORMULAIRE ====================
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+   
     if (!selectedFt) {
-      alert('Veuillez sélectionner un FT');
+      customToast.error('Veuillez sélectionner un FT');
       return;
     }
-
-    if (!formData.superficie_remblai || parseFloat(formData.superficie_remblai) <= 0) {
-      alert('Veuillez entrer une superficie valide');
+    if (!validateForm()) {
+      customToast.error('Veuillez corriger les erreurs dans le formulaire');
       return;
     }
-
-    if (!formData.montant || parseFloat(formData.montant) <= 0) {
-      alert('Le montant calculé n\'est pas valide');
-      return;
-    }
-
-    if (!formData.montant_lettre) {
-      alert('Le montant en lettres n\'a pas pu être généré');
-      return;
-    }
-
     setShowConfirmModal(true);
   };
-
   const handleConfirmSubmit = async () => {
     setShowConfirmModal(false);
     setLoading(true);
-    
+   
     try {
       const avisData = {
         iddescente: formData.iddescente,
@@ -1272,16 +1229,16 @@ const generatePDF = async () => {
         fin_premier_paiement: formData.fin_premier_paiement || null,
         contact: formData.contact || null
       };
-      
+     
       const response = await fetch('http://localhost:3000/api/avis-de-paiement', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
         body: JSON.stringify(avisData)
       });
-      
+     
       if (!response.ok) {
         let errorMessage = `Erreur HTTP ${response.status}`;
         try {
@@ -1293,15 +1250,15 @@ const generatePDF = async () => {
         }
         throw new Error(errorMessage);
       }
-      
+     
       const result = await response.json();
-      
+     
       if (result.success) {
-        alert('Avis de paiement créé avec succès !');
-        
+        customToast.success('Avis de paiement créé avec succès !');
+       
         // Générer automatiquement le PDF après l'enregistrement réussi
         await generatePDF();
-        
+       
         if (onSuccess) onSuccess();
         if (onClose) onClose();
       } else {
@@ -1309,14 +1266,12 @@ const generatePDF = async () => {
       }
     } catch (error: any) {
       console.error('❌ Erreur:', error);
-      alert(`Erreur lors de la création de l'avis de paiement: ${error.message}`);
+      customToast.error(`Erreur lors de la création de l'avis de paiement: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
-
   // ==================== RENDER ====================
-
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -1333,9 +1288,9 @@ const generatePDF = async () => {
             </div>
             <div className="flex items-center gap-2">
               {selectedFt && descenteData && (
-                <button 
-                  className="p-2 hover:bg-slate-100 rounded-full" 
-                  title="Générer PDF" 
+                <button
+                  className="p-2 hover:bg-slate-100 rounded-full"
+                  title="Générer PDF"
                   onClick={generatePDF}
                   disabled={generatingPDF || !formData.montant}
                 >
@@ -1356,7 +1311,6 @@ const generatePDF = async () => {
               )}
             </div>
           </div>
-
           <div className="p-6">
             {showFtSelection && !selectedFt && (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
@@ -1364,7 +1318,7 @@ const generatePDF = async () => {
                   <FileSignature className="w-5 h-5 mr-2 text-blue-600" />
                   Sélectionnez un FT avec dossier complet
                 </h2>
-                
+               
                 {loading ? (
                   <div className="flex items-center justify-center h-64">
                     <div className="text-center">
@@ -1380,7 +1334,7 @@ const generatePDF = async () => {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto p-2">
                     {fts.map((ftItem) => (
-                      <div 
+                      <div
                         key={ftItem.id}
                         className="border rounded-lg p-4 hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors"
                         onClick={() => handleSelectFt(ftItem)}
@@ -1420,7 +1374,6 @@ const generatePDF = async () => {
                 )}
               </div>
             )}
-
             {selectedFt && (
               <>
                 <div className="mb-6">
@@ -1443,9 +1396,9 @@ const generatePDF = async () => {
                         setSelectedFt(null);
                         setShowFtSelection(true);
                         setDescenteData(null);
-                        setFormData(prev => ({ 
-                          ...prev, 
-                          idft: 0, 
+                        setFormData(prev => ({
+                          ...prev,
+                          idft: 0,
                           iddescente: 0,
                           montant: '',
                           montant_lettre: ''
@@ -1485,7 +1438,6 @@ const generatePDF = async () => {
                             </div>
                           </div>
                         </div>
-
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <div className="flex justify-between items-center">
@@ -1513,7 +1465,6 @@ const generatePDF = async () => {
                           </div>
                         </div>
                       </div>
-
                       <div className="mt-6 pt-6 border-t border-slate-200">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-600">Statut dossier:</span>
@@ -1533,7 +1484,6 @@ const generatePDF = async () => {
                     </div>
                   )}
                 </div>
-
                 <div className="mb-6">
                   <div
                     className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg cursor-pointer"
@@ -1568,7 +1518,7 @@ const generatePDF = async () => {
                             <div className="space-y-4">
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <Calendar className="w-4 h-4 text-slate-500" />
+                                  <Calendar className="w-3 h-3 text-slate-500" />
                                   <span className="text-sm font-medium text-slate-700">Date de la descente</span>
                                 </div>
                                 <p className="text-slate-900 font-medium">
@@ -1577,7 +1527,7 @@ const generatePDF = async () => {
                               </div>
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <User className="w-4 h-4 text-slate-500" />
+                                  <User className="w-3 h-3 text-slate-500" />
                                   <span className="text-sm font-medium text-slate-700">Verbalisateur</span>
                                 </div>
                                 <p className="text-slate-900 font-medium">
@@ -1591,7 +1541,7 @@ const generatePDF = async () => {
                               </div>
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <Users className="w-4 h-4 text-slate-500" />
+                                  <Users className="w-3 h-3 text-slate-500" />
                                   <span className="text-sm font-medium text-slate-700">Personne concernée</span>
                                 </div>
                                 <p className="text-slate-900 font-medium">
@@ -1602,7 +1552,7 @@ const generatePDF = async () => {
                             <div className="space-y-4">
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <MapPin className="w-4 h-4 text-slate-500" />
+                                  <MapPin className="w-3 h-3 text-slate-500" />
                                   <span className="text-sm font-medium text-slate-700">Localisation</span>
                                 </div>
                                 <p className="text-slate-900 font-medium">
@@ -1621,7 +1571,7 @@ const generatePDF = async () => {
                               </div>
                               <div className="p-3 bg-white rounded-lg border border-slate-200">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <Phone className="w-4 h-4 text-slate-500" />
+                                  <Phone className="w-3 h-3 text-slate-500" />
                                   <span className="text-sm font-medium text-slate-700">Contact</span>
                                 </div>
                                 <p className="text-slate-900 font-medium">
@@ -1667,7 +1617,7 @@ const generatePDF = async () => {
                               )}
                             </div>
                           </div>
-                          
+                         
                           {descenteData && (
                             <div className="mt-6">
                               <div
@@ -1685,7 +1635,7 @@ const generatePDF = async () => {
                                   <ChevronDown className="w-5 h-5 text-slate-600" />
                                 }
                               </div>
-                              
+                             
                               {expandedSections.carte && (
                                 <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-gradient-to-r from-slate-50 to-slate-100">
@@ -1719,7 +1669,7 @@ const generatePDF = async () => {
                                       </button>
                                     </div>
                                   </div>
-                                  
+                                 
                                   <div
                                     ref={mapContainerRef}
                                     className="h-[400px] w-full bg-slate-100 relative z-0"
@@ -1733,7 +1683,7 @@ const generatePDF = async () => {
                                       </div>
                                     )}
                                   </div>
-                                  
+                                 
                                   <div className="p-4 border-t border-slate-200 bg-slate-50">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                       <div className="bg-white p-3 rounded-lg border border-slate-200">
@@ -1780,7 +1730,6 @@ const generatePDF = async () => {
                     </div>
                   )}
                 </div>
-
                 <div>
                   <div
                     className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg cursor-pointer"
@@ -1791,6 +1740,12 @@ const generatePDF = async () => {
                       <h3 className="text-lg font-semibold text-slate-800">
                         Formulaire Avis de Paiement
                       </h3>
+                      {Object.keys(errors).length > 0 && (
+                        <span className="ml-2 bg-red-500 text-white text-xs font-medium inline-flex items-center px-2.5 py-0.5 rounded">
+                          <AlertCircle className="w-3 h-3 mr-1" />
+                          {Object.keys(errors).length}
+                        </span>
+                      )}
                     </div>
                     {expandedSections.formulaire ?
                       <ChevronUp className="w-5 h-5 text-slate-600" /> :
@@ -1804,7 +1759,7 @@ const generatePDF = async () => {
                           <Calculator className="w-5 h-5 mr-2" />
                           Calcul automatique du montant APIPA
                         </h4>
-                        
+                       
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1835,12 +1790,12 @@ const generatePDF = async () => {
                               </label>
                             </div>
                             <p className="text-xs text-slate-500 mt-1">
-                              {descenteData?.infraction ? 
-                                `Détecté depuis l'infraction: ${extractInfractionText(descenteData.infraction).substring(0, 50)}...` : 
+                              {descenteData?.infraction ?
+                                `Détecté depuis l'infraction: ${extractInfractionText(descenteData.infraction).substring(0, 50)}...` :
                                 'Sélectionnez manuellement'}
                             </p>
                           </div>
-                          
+                         
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
                               Zone Géographique *
@@ -1870,7 +1825,7 @@ const generatePDF = async () => {
                               </label>
                             </div>
                           </div>
-                          
+                         
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
                               Destination *
@@ -1887,7 +1842,7 @@ const generatePDF = async () => {
                               <option value="COMMERCIAL">COMMERCIAL</option>
                             </select>
                           </div>
-                          
+                         
                           <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
                               PU (Plan d'Urbanisme)
@@ -1906,7 +1861,7 @@ const generatePDF = async () => {
                             </select>
                           </div>
                         </div>
-                        
+                       
                         <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
                           <div className="text-sm text-slate-600 mb-2">Détails du calcul:</div>
                           <div className="grid grid-cols-3 gap-4 text-sm">
@@ -1923,7 +1878,7 @@ const generatePDF = async () => {
                               <div className="font-bold text-green-700">${formatNumber(formData.valeur_unitaire)} Ar/m²</div>
                             </div>
                           </div>
-                          
+                         
                           {formData.zone_type === 'constructible' && (
                             <div className="mt-3 text-sm text-slate-600 p-2 bg-green-50 rounded">
                               <span className="font-medium">Type de calcul:</span> Zone constructible = Amende (${formatNumber(calculDetails.amende)} Ar) + Redevance (${formatNumber(calculDetails.redevance)} Ar) = Total (${formatNumber(calculDetails.total)} Ar) par m²
@@ -1935,7 +1890,7 @@ const generatePDF = async () => {
                             </div>
                           )}
                         </div>
-                        
+                       
                         <div className="mt-4 bg-white p-4 rounded-lg border border-blue-200 shadow-sm">
                           <div className="flex justify-between items-center mb-2">
                             <div className="text-sm text-slate-700">
@@ -1955,7 +1910,7 @@ const generatePDF = async () => {
                           </div>
                         </div>
                       </div>
-                      
+                     
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1972,7 +1927,7 @@ const generatePDF = async () => {
                             readOnly
                           />
                         </div>
-                        
+                       
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
                             <Calendar className="inline-block w-4 h-4 mr-1" />
@@ -1986,8 +1941,8 @@ const generatePDF = async () => {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                             required
                           />
+                          {errors.date_ap && <p className="text-red-500 text-xs mt-1">{errors.date_ap}</p>}
                         </div>
-
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
                             <Calculator className="inline-block w-4 h-4 mr-1" />
@@ -2005,13 +1960,14 @@ const generatePDF = async () => {
                               required
                             />
                           </div>
+                          {errors.superficie_remblai && <p className="text-red-500 text-xs mt-1">{errors.superficie_remblai}</p>}
                           {formData.superficie_remblai && (
                             <div className="text-sm text-slate-600 mt-1">
                               ${formatSuperficie(formData.superficie_remblai)}
                             </div>
                           )}
                         </div>
-                        
+                       
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
                             Motif (pour information seulement)
@@ -2026,7 +1982,6 @@ const generatePDF = async () => {
                           />
                         </div>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -2047,13 +2002,14 @@ const generatePDF = async () => {
                               readOnly
                             />
                           </div>
+                          {errors.montant && <p className="text-red-500 text-xs mt-1">{errors.montant}</p>}
                           {formData.montant && (
                             <div className="text-sm text-slate-600 mt-1">
                               ${formatMontant(formData.montant)}
                             </div>
                           )}
                         </div>
-                        
+                       
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-slate-700 mb-2">
                             Montant en lettres *
@@ -2069,7 +2025,6 @@ const generatePDF = async () => {
                           />
                         </div>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -2083,7 +2038,7 @@ const generatePDF = async () => {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                           />
                         </div>
-                        
+                       
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
                             Contact *
@@ -2096,9 +2051,10 @@ const generatePDF = async () => {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                             required
                           />
+                          {errors.contact && <p className="text-red-500 text-xs mt-1">{errors.contact}</p>}
                         </div>
                       </div>
-                      
+                     
                       <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
                         <button
                           type="button"
@@ -2144,7 +2100,6 @@ const generatePDF = async () => {
           </div>
         </div>
       </div>
-
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full">
@@ -2159,7 +2114,7 @@ const generatePDF = async () => {
               <div className="font-medium text-blue-800 mb-1">Détails du calcul:</div>
               <div className="text-sm text-blue-700">
                 <div>• Superficie: ${formatNumber(formData.superficie_remblai)} m²</div>
-                <div>• Valeur unitaire: ${formatNumber(formData.valeur_unitaire)} Ar/m²</div>
+                <div>• Valeur unitaire: ${formatNumber(formData.valeur_unitaire)} Ar</div>
                 <div>• Montant total: <strong>${formatNumber(formData.montant)} Ar</strong></div>
                 <div className="mt-2 italic">${formData.montant_lettre}</div>
               </div>
@@ -2185,8 +2140,8 @@ const generatePDF = async () => {
           </div>
         </div>
       )}
+      <Toaster />
     </>
   );
 };
-
 export default FaireAp;

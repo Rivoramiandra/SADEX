@@ -16,6 +16,8 @@ const cadastreRoutes = require('./routes/cadastreRoutes');
 const titreRequisitionRoutes = require('./routes/titreRequisitionRoutes');
 const titresSansNomRoutes = require("./routes/titresansnomRoutes");
 const fokontanyRoutes = require('./routes/fokontanyRoutes');
+const statsRoutes = require('./routes/statsDescentes'); 
+const statRendezVousRoutes = require('./routes/statRendezVous');
 
 const app = express();
 const server = http.createServer(app);
@@ -44,6 +46,9 @@ app.use('/api/cadastre', cadastreRoutes);
 app.use('/api/titre-requisition', titreRequisitionRoutes);
 app.use("/api/titres-sans-nom", titresSansNomRoutes);
 app.use('/api/fokontany', fokontanyRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/stats/rendezvous', statRendezVousRoutes);
+
 // Route de test santé du serveur
 app.get('/api/health', (req, res) => {
   res.json({ 

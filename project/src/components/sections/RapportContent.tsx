@@ -762,7 +762,7 @@ export default function FormulaireDescente({
     // Ajouter les couches de base
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
-      maxZoom: 19
+      maxZoom: 22
     });
     const satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
       attribution: 'Imagery © <a href="https://maps.google.com">Google Maps</a>',

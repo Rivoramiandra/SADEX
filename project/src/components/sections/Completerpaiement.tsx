@@ -10,18 +10,15 @@ import 'react-toastify/dist/ReactToastify.css';
 
 function Completerpaiement({ paiement, onClose }) {
   const [formData, setFormData] = useState({
-    // Informations de base
     mode_paiement: paiement.mode_paiement || 'Espèce',
     montant_paye: 0,
     montant_total: paiement.montant_total || paiement.montant,
     date_paiement: new Date().toISOString().split('T')[0],
     reference: '',
     contact: paiement.contact || '',
-    // Gestion des tranches
     est_nouvelle_tranche: false,
     nombre_tranche_total: paiement.nombre_tranche || 1,
     numero_tranche_actuelle: paiement.numero_tranche || 1,
-    // Champs spécifiques aux modes
     numero_carte: '',
     nom_carte: '',
     date_expiration: '',
@@ -31,7 +28,6 @@ function Completerpaiement({ paiement, onClose }) {
     nom_titulaire: '',
     operateur_mobile: '',
     numero_transaction: '',
-    // Pour espèces
     nom_deposant: '',
     prenom_deposant: '',
     piece_identite: '',
@@ -41,6 +37,30 @@ function Completerpaiement({ paiement, onClose }) {
   const [loading, setLoading] = useState(false);
   const [paiementInfo, setPaiementInfo] = useState(null);
   const [montantParTranche, setMontantParTranche] = useState(0);
+
+  // Configuration personnalisée des toasts
+  const toastConfig = {
+    position: "top-right" as const,
+    autoClose: 3000,
+    hideProgressBar: false,
+    closeOnClick: true,
+    pauseOnHover: true,
+    draggable: true,
+    progress: undefined,
+    theme: "dark",
+    style: {
+      backgroundColor: '#000000',
+      color: '#ffffff',
+      border: '1px solid #333333'
+    }
+  };
+
+  const showToast = {
+    success: (message: string) => toast.success(message, toastConfig),
+    error: (message: string) => toast.error(message, toastConfig),
+    info: (message: string) => toast.info(message, toastConfig),
+    warning: (message: string) => toast.warning(message, toastConfig)
+  };
 
   // Mettre à jour les informations quand le paiement change
   useEffect(() => {
@@ -55,17 +75,14 @@ function Completerpaiement({ paiement, onClose }) {
       const nombreTotalTranches = paiement.nombre_tranche || 1;
       const numeroTrancheActuelle = paiement.numero_tranche || 1;
       
-      // Calculer combien de tranches sont déjà payées
       const tranchesDejaPayees = numeroTrancheActuelle;
       const tranchesRestant = nombreTotalTranches - tranchesDejaPayees;
       
-      // Calculer le montant par tranche pour les tranches restantes
       let montantParTrancheCalcule = 0;
       if (tranchesRestant > 0) {
         montantParTrancheCalcule = Math.floor(montantRestant / tranchesRestant);
         const reste = montantRestant - (montantParTrancheCalcule * tranchesRestant);
         
-        // Pour une seule tranche restante, on prend tout le reste
         if (tranchesRestant === 1) {
           montantParTrancheCalcule = montantRestant;
         }
@@ -73,7 +90,6 @@ function Completerpaiement({ paiement, onClose }) {
       
       setMontantParTranche(montantParTrancheCalcule);
       
-      // Calculer la prochaine tranche (si on est à la tranche 1, la prochaine est 2)
       const prochaineTranche = numeroTrancheActuelle + 1;
       
       setFormData(prev => ({
@@ -87,7 +103,6 @@ function Completerpaiement({ paiement, onClose }) {
         est_nouvelle_tranche: montantRestant > 0
       }));
       
-      // Calculer les informations de paiement
       const info = calculerInformationsPaiement(paiement);
       setPaiementInfo(info);
     }
@@ -108,7 +123,7 @@ function Completerpaiement({ paiement, onClose }) {
     const maxMontant = paiement.montant_reste || 0;
     
     if (value > maxMontant) {
-      toast.error(`Le montant ne peut pas dépasser ${formatMontant(maxMontant)} Ar`);
+      showToast.error(`Le montant ne peut pas dépasser ${formatMontant(maxMontant)} Ar`);
     }
     
     setFormData(prev => ({
@@ -117,7 +132,6 @@ function Completerpaiement({ paiement, onClose }) {
     }));
   };
 
-  // Calculer les informations du paiement
   const calculerInformationsPaiement = (paiementData) => {
     const montantPayeActuel = parseFloat(paiementData.montant) || 0;
     const montantRestant = parseFloat(paiementData.montant_reste) || 0;
@@ -155,89 +169,86 @@ function Completerpaiement({ paiement, onClose }) {
     };
   };
 
-  // Formater les montants
   const formatMontant = (montant) => {
     if (montant === null || montant === undefined) return '0';
     return new Intl.NumberFormat('fr-FR').format(montant);
   };
 
-  // Valider le formulaire
   const validerFormulaire = () => {
     const montantPaye = parseFloat(formData.montant_paye);
     const montantRestant = paiement.montant_reste;
 
     if (!montantPaye || montantPaye <= 0) {
-      toast.error('Le montant payé doit être supérieur à 0');
+      showToast.error('Le montant payé doit être supérieur à 0');
       return false;
     }
 
     if (montantPaye > montantRestant) {
-      toast.error(`Le montant payé (${formatMontant(montantPaye)} Ar) ne peut pas dépasser le montant restant (${formatMontant(montantRestant)} Ar)`);
+      showToast.error(`Le montant payé (${formatMontant(montantPaye)} Ar) ne peut pas dépasser le montant restant (${formatMontant(montantRestant)} Ar)`);
       return false;
     }
 
-    // Validation selon le mode de paiement
     switch (formData.mode_paiement) {
       case 'Carte bancaire':
         if (!formData.numero_carte || formData.numero_carte.length < 16) {
-          toast.error('Le numéro de carte doit contenir 16 chiffres');
+          showToast.error('Le numéro de carte doit contenir 16 chiffres');
           return false;
         }
         if (!formData.nom_carte) {
-          toast.error('Le nom sur la carte est requis');
+          showToast.error('Le nom sur la carte est requis');
           return false;
         }
         if (!formData.date_expiration) {
-          toast.error('La date d\'expiration est requise');
+          showToast.error('La date d\'expiration est requise');
           return false;
         }
         if (!formData.cvv || formData.cvv.length < 3) {
-          toast.error('Le code CVV doit contenir 3 chiffres');
+          showToast.error('Le code CVV doit contenir 3 chiffres');
           return false;
         }
         break;
 
       case 'Virement':
         if (!formData.banque) {
-          toast.error('Le nom de la banque est requis');
+          showToast.error('Le nom de la banque est requis');
           return false;
         }
         if (!formData.iban || formData.iban.length < 16) {
-          toast.error('L\'IBAN est requis et doit être valide');
+          showToast.error('L\'IBAN est requis et doit être valide');
           return false;
         }
         if (!formData.nom_titulaire) {
-          toast.error('Le nom du titulaire du compte est requis');
+          showToast.error('Le nom du titulaire du compte est requis');
           return false;
         }
         break;
 
       case 'Mobile Money':
         if (!formData.operateur_mobile) {
-          toast.error('L\'opérateur mobile est requis');
+          showToast.error('L\'opérateur mobile est requis');
           return false;
         }
         if (!formData.contact || formData.contact.length < 10) {
-          toast.error('Le numéro de téléphone est requis');
+          showToast.error('Le numéro de téléphone est requis');
           return false;
         }
         if (!formData.numero_transaction) {
-          toast.error('Le numéro de transaction est requis');
+          showToast.error('Le numéro de transaction est requis');
           return false;
         }
         break;
 
       case 'Espèce':
         if (!formData.nom_deposant) {
-          toast.error('Le nom du déposant est requis');
+          showToast.error('Le nom du déposant est requis');
           return false;
         }
         if (!formData.piece_identite) {
-          toast.error('Le type de pièce d\'identité est requis');
+          showToast.error('Le type de pièce d\'identité est requis');
           return false;
         }
         if (!formData.numero_piece) {
-          toast.error('Le numéro de la pièce d\'identité est requis');
+          showToast.error('Le numéro de la pièce d\'identité est requis');
           return false;
         }
         break;
@@ -246,7 +257,6 @@ function Completerpaiement({ paiement, onClose }) {
     return true;
   };
 
-  // Soumettre le formulaire
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -255,10 +265,9 @@ function Completerpaiement({ paiement, onClose }) {
     }
 
     setLoading(true);
-    toast.info('Traitement du paiement en cours...', { autoClose: 2000 });
+    showToast.info('Traitement du paiement en cours...');
 
     try {
-      // Calculer les nouvelles valeurs
       const montantPaye = parseFloat(formData.montant_paye);
       const montantRestant = parseFloat(paiement.montant_reste) || 0;
       const nouveauMontantRestant = montantRestant - montantPaye;
@@ -271,7 +280,6 @@ function Completerpaiement({ paiement, onClose }) {
       
       const nouveauStatut = estDerniereTranche ? 'Payé' : 'Partiel';
 
-      // Préparer les données pour la route PUT
       const paiementData = {
         montant: montantPaye,
         mode_paiement: formData.mode_paiement,
@@ -285,7 +293,6 @@ function Completerpaiement({ paiement, onClose }) {
 
       console.log('📤 Données envoyées pour mise à jour paiement:', paiementData);
 
-      // Utiliser la route PUT existante
       const response = await fetch(`${API_BASE_URL}/paiements/${paiement.idpaiement}`, {
         method: 'PUT',
         headers: {
@@ -301,24 +308,22 @@ function Completerpaiement({ paiement, onClose }) {
       }
 
       if (result.success) {
-        toast.success('Paiement mis à jour avec succès !');
+        showToast.success('Paiement mis à jour avec succès !');
         
-        // Attendre un peu avant de fermer pour que l'utilisateur voie le toast
         setTimeout(() => {
-          onClose(true); // Passer true pour indiquer un succès
+          onClose(true);
         }, 1500);
       } else {
         throw new Error(result.message || 'Erreur lors de la mise à jour');
       }
     } catch (err) {
       console.error('❌ Erreur:', err);
-      toast.error(err.message || 'Une erreur est survenue lors du paiement');
+      showToast.error(err.message || 'Une erreur est survenue lors du paiement');
     } finally {
       setLoading(false);
     }
   };
 
-  // Rendu des champs spécifiques selon le mode de paiement
   const renderChampsSpecifiques = () => {
     switch (formData.mode_paiement) {
       case 'Carte bancaire':
@@ -328,7 +333,6 @@ function Completerpaiement({ paiement, onClose }) {
               <CreditCard className="w-4 h-4" />
               Informations de la carte
             </h4>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -344,7 +348,6 @@ function Completerpaiement({ paiement, onClose }) {
                   maxLength="19"
                 />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Nom sur la carte *
@@ -358,7 +361,6 @@ function Completerpaiement({ paiement, onClose }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Date d'expiration *
@@ -371,7 +373,6 @@ function Completerpaiement({ paiement, onClose }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Code CVV *
@@ -397,7 +398,6 @@ function Completerpaiement({ paiement, onClose }) {
               <TrendingUp className="w-4 h-4" />
               Informations de virement
             </h4>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -418,7 +418,6 @@ function Completerpaiement({ paiement, onClose }) {
                   <option value="MCB">MCB Madagascar</option>
                 </select>
               </div>
-              
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   IBAN / Numéro de compte *
@@ -432,7 +431,6 @@ function Completerpaiement({ paiement, onClose }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Nom du titulaire du compte *
@@ -457,7 +455,6 @@ function Completerpaiement({ paiement, onClose }) {
               <Phone className="w-4 h-4" />
               Informations Mobile Money
             </h4>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -476,7 +473,6 @@ function Completerpaiement({ paiement, onClose }) {
                   <option value="Zep">Zep</option>
                 </select>
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Numéro de téléphone *
@@ -490,7 +486,6 @@ function Completerpaiement({ paiement, onClose }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Numéro de transaction *
@@ -515,7 +510,6 @@ function Completerpaiement({ paiement, onClose }) {
               <Banknote className="w-4 h-4" />
               Informations du déposant
             </h4>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -530,7 +524,6 @@ function Completerpaiement({ paiement, onClose }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Prénom du déposant
@@ -544,7 +537,6 @@ function Completerpaiement({ paiement, onClose }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Type de pièce *
@@ -562,7 +554,6 @@ function Completerpaiement({ paiement, onClose }) {
                   <option value="Autre">Autre</option>
                 </select>
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Numéro de pièce *
@@ -585,7 +576,6 @@ function Completerpaiement({ paiement, onClose }) {
     }
   };
 
-  // Icône pour le mode de paiement
   const getModeIcon = (mode) => {
     switch (mode) {
       case 'Espèce':
@@ -605,7 +595,35 @@ function Completerpaiement({ paiement, onClose }) {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={3000} />
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={true}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+        style={{
+          top: '1rem',
+          right: '1rem',
+          zIndex: 9999
+        }}
+        toastStyle={{
+          backgroundColor: '#000000',
+          color: '#ffffff',
+          border: '1px solid #333333',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}
+        progressStyle={{
+          background: 'linear-gradient(to right, #4f46e5, #8b5cf6)'
+        }}
+      />
+      
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* En-tête avec informations */}
         <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">

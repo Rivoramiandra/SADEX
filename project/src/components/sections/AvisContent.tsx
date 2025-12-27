@@ -54,17 +54,20 @@ export default function AvisContent() {
   const [fts, setFts] = useState<FT[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [searchTermSansAP, setSearchTermSansAP] = useState('');
+  const [searchTermAvecAP, setSearchTermAvecAP] = useState('');
+  const [pageSansAP, setPageSansAP] = useState(1);
+  const [pageAvecAP, setPageAvecAP] = useState(1);
+  const [totalPagesSansAP, setTotalPagesSansAP] = useState(1);
+  const [totalPagesAvecAP, setTotalPagesAvecAP] = useState(1);
+  const [pageSizeSansAP, setPageSizeSansAP] = useState(10);
+  const [pageSizeAvecAP, setPageSizeAvecAP] = useState(10);
   const [selectedFt, setSelectedFt] = useState<FT | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCreateAvisModal, setShowCreateAvisModal] = useState(false);
   const [selectedFtForAvis, setSelectedFtForAvis] = useState<FT | null>(null);
   const [avisList, setAvisList] = useState<AvisPaiement[]>([]);
-  const [filtreAvis, setFiltreAvis] = useState<'tous' | 'avec_ap' | 'sans_ap'>('tous');
+  const [loadingAvis, setLoadingAvis] = useState(false);
   
   // Récupérer les FT avec statut "Complet" depuis l'API
   const fetchFTsComplets = useCallback(async () => {
@@ -72,16 +75,10 @@ export default function AvisContent() {
       setLoading(true);
       setError(null);
       
-      const offset = (page - 1) * pageSize;
+      // Récupérer tous les FT complets (sans pagination pour avoir tous les résultats)
       const params = new URLSearchParams({
-        offset: offset.toString(),
-        limit: pageSize.toString(),
         statut_dossier: 'Complet'  // Filtrer uniquement les dossiers complets
       });
-      
-      if (searchTerm) {
-        params.append('search', searchTerm);
-      }
       
       const url = `http://localhost:3000/api/ft?${params.toString()}`;
       console.log('Fetching FT complets from:', url);
@@ -119,14 +116,6 @@ export default function AvisContent() {
         });
         
         setFts(processedFts);
-        
-        if (result.total !== undefined) {
-          setTotalCount(result.total);
-          setTotalPages(Math.ceil(result.total / pageSize));
-        } else {
-          setTotalCount(result.data.length);
-          setTotalPages(Math.ceil(result.data.length / pageSize));
-        }
       } else {
         throw new Error(result.message || 'Erreur lors de la récupération des données');
       }
@@ -134,16 +123,15 @@ export default function AvisContent() {
       console.error('Erreur lors du chargement des FT complets:', err);
       setError(err.message);
       setFts([]);
-      setTotalCount(0);
-      setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchTerm]);
+  }, []);
 
   // Récupérer la liste des avis de paiement existants
   const fetchAvisList = useCallback(async () => {
     try {
+      setLoadingAvis(true);
       const response = await fetch('http://localhost:3000/api/avis-de-paiement');
       if (response.ok) {
         const result = await response.json();
@@ -153,6 +141,8 @@ export default function AvisContent() {
       }
     } catch (error) {
       console.error('Erreur lors du chargement des avis de paiement:', error);
+    } finally {
+      setLoadingAvis(false);
     }
   }, []);
 
@@ -162,55 +152,45 @@ export default function AvisContent() {
     fetchAvisList();
   }, [fetchFTsComplets, fetchAvisList]);
 
-  // Gérer le délai de recherche
+  // Gérer le délai de recherche pour FT sans AP
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchTerm !== '') {
-        setPage(1);
+      if (searchTermSansAP !== '') {
+        setPageSansAP(1);
       }
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTermSansAP]);
+
+  // Gérer le délai de recherche pour FT avec AP
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTermAvecAP !== '') {
+        setPageAvecAP(1);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTermAvecAP]);
 
   // Vérifier si un avis existe déjà pour un FT
   const getAvisForFt = (ftId: number) => {
     return avisList.find(avis => avis.idft === ftId);
   };
 
-  // Filtrer les FT (recherche locale + filtre AP)
-  const filteredFts = fts.filter(ft => {
-    // Filtre par recherche texte
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      const matchesSearch = (
-        ft.reference_ft?.toLowerCase().includes(searchLower) ||
-        ft.nom_convoquee?.toLowerCase().includes(searchLower) ||
-        ft.nom_personne_r?.toLowerCase().includes(searchLower) ||
-        ft.commune?.toLowerCase().includes(searchLower) ||
-        ft.fokontany?.toLowerCase().includes(searchLower)
-      );
-      if (!matchesSearch) return false;
-    }
-    
-    // Filtre par présence d'avis de paiement
-    const existingAvis = getAvisForFt(ft.id);
-    
-    switch (filtreAvis) {
-      case 'avec_ap':
-        return existingAvis !== undefined;
-      case 'sans_ap':
-        return existingAvis === undefined;
-      default:
-        return true; // 'tous'
-    }
-  });
+  // Réinitialiser les filtres pour FT sans AP
+  const resetFiltresSansAP = () => {
+    setSearchTermSansAP('');
+    setPageSansAP(1);
+    setPageSizeSansAP(10);
+  };
 
-  // Réinitialiser les filtres
-  const resetFiltres = () => {
-    setFiltreAvis('tous');
-    setSearchTerm('');
-    setPage(1);
+  // Réinitialiser les filtres pour FT avec AP
+  const resetFiltresAvecAP = () => {
+    setSearchTermAvecAP('');
+    setPageAvecAP(1);
+    setPageSizeAvecAP(10);
   };
 
   // Ouvrir le modal pour créer un avis de paiement
@@ -222,26 +202,28 @@ export default function AvisContent() {
   // Fermer le modal et rafraîchir les données après succès
   const handleAvisSuccess = () => {
     fetchAvisList();
+    fetchFTsComplets();
     setShowCreateAvisModal(false);
     setSelectedFtForAvis(null);
   };
 
-  // Calculer les statistiques
+  // Calculer les statistiques (comptes seulement, pas de montants)
   const calculateStatistics = () => {
-    const totalMontantAvis = avisList.reduce((sum, avis) => sum + avis.montant, 0);
-    const totalPaye = avisList
-      .filter(avis => avis.statut_paiement === 'Payé')
-      .reduce((sum, avis) => sum + avis.montant, 0);
-    const totalEnAttente = avisList
-      .filter(avis => avis.statut_paiement === 'En attente')
-      .reduce((sum, avis) => sum + avis.montant, 0);
+    const ftAvecAP = fts.filter(ft => getAvisForFt(ft.id) !== undefined);
+    const ftSansAP = fts.filter(ft => getAvisForFt(ft.id) === undefined);
+    
+    const avisPayes = avisList.filter(avis => avis.statut_paiement === 'Payé');
+    const avisEnAttente = avisList.filter(avis => avis.statut_paiement === 'En attente');
+    const avisRetard = avisList.filter(avis => avis.statut_paiement === 'Retard');
 
     return {
       totalFT: fts.length,
       totalAvis: avisList.length,
-      totalMontant: totalMontantAvis,
-      totalPaye,
-      totalEnAttente
+      ftAvecAP: ftAvecAP.length,
+      ftSansAP: ftSansAP.length,
+      avisPayes: avisPayes.length,
+      avisEnAttente: avisEnAttente.length,
+      avisRetard: avisRetard.length
     };
   };
 
@@ -301,14 +283,57 @@ export default function AvisContent() {
     setShowDetailsModal(true);
   };
 
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setPage(1);
+  const handlePageSizeChangeSansAP = (newSize: number) => {
+    setPageSizeSansAP(newSize);
+    setPageSansAP(1);
   };
 
-  // Calculer les indices affichés
-  const startIndex = (page - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, filteredFts.length);
+  const handlePageSizeChangeAvecAP = (newSize: number) => {
+    setPageSizeAvecAP(newSize);
+    setPageAvecAP(1);
+  };
+
+  // FT sans AP (pour le tableau du haut)
+  const ftSansAP = fts.filter(ft => !getAvisForFt(ft.id));
+  const filteredFtSansAP = ftSansAP.filter(ft => {
+    if (searchTermSansAP.trim()) {
+      const searchLower = searchTermSansAP.toLowerCase().trim();
+      return (
+        ft.reference_ft?.toLowerCase().includes(searchLower) ||
+        ft.nom_convoquee?.toLowerCase().includes(searchLower) ||
+        ft.nom_personne_r?.toLowerCase().includes(searchLower) ||
+        ft.commune?.toLowerCase().includes(searchLower) ||
+        ft.fokontany?.toLowerCase().includes(searchLower)
+      );
+    }
+    return true;
+  });
+
+  // FT avec AP (pour le tableau du bas)
+  const ftAvecAP = fts.filter(ft => getAvisForFt(ft.id) !== undefined);
+  const filteredFtAvecAP = ftAvecAP.filter(ft => {
+    if (searchTermAvecAP.trim()) {
+      const searchLower = searchTermAvecAP.toLowerCase().trim();
+      return (
+        ft.reference_ft?.toLowerCase().includes(searchLower) ||
+        ft.nom_convoquee?.toLowerCase().includes(searchLower) ||
+        ft.nom_personne_r?.toLowerCase().includes(searchLower) ||
+        ft.commune?.toLowerCase().includes(searchLower) ||
+        ft.fokontany?.toLowerCase().includes(searchLower)
+      );
+    }
+    return true;
+  });
+
+  // Calculer les indices affichés pour FT sans AP
+  const startIndexSansAP = (pageSansAP - 1) * pageSizeSansAP;
+  const endIndexSansAP = Math.min(startIndexSansAP + pageSizeSansAP, filteredFtSansAP.length);
+  const totalPagesSansAPCalculated = Math.ceil(filteredFtSansAP.length / pageSizeSansAP);
+
+  // Calculer les indices affichés pour FT avec AP
+  const startIndexAvecAP = (pageAvecAP - 1) * pageSizeAvecAP;
+  const endIndexAvecAP = Math.min(startIndexAvecAP + pageSizeAvecAP, filteredFtAvecAP.length);
+  const totalPagesAvecAPCalculated = Math.ceil(filteredFtAvecAP.length / pageSizeAvecAP);
 
   return (
     <div className="space-y-6">
@@ -319,7 +344,7 @@ export default function AvisContent() {
       </div>
 
       {/* Cartes de statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -347,23 +372,11 @@ export default function AvisContent() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Total collecté</p>
-              <p className="text-2xl font-bold text-slate-900">{formatMontant(stats.totalMontant)} Ar</p>
+              <p className="text-sm text-slate-600">FT sans AP</p>
+              <p className="text-2xl font-bold text-amber-600">{stats.ftSansAP}</p>
             </div>
-            <div className="p-3 bg-slate-100 rounded-full">
-              <DollarSign className="w-6 h-6 text-slate-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600">Montant payé</p>
-              <p className="text-2xl font-bold text-green-600">{formatMontant(stats.totalPaye)} Ar</p>
-            </div>
-            <div className="p-3 bg-green-100 rounded-full">
-              <CheckCircle className="w-6 h-6 text-green-600" />
+            <div className="p-3 bg-amber-100 rounded-full">
+              <Clock className="w-6 h-6 text-amber-600" />
             </div>
           </div>
         </div>
@@ -371,170 +384,162 @@ export default function AvisContent() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-600">Montant en attente</p>
-              <p className="text-2xl font-bold text-orange-600">{formatMontant(stats.totalEnAttente)} Ar</p>
+              <p className="text-sm text-slate-600">FT avec AP</p>
+              <p className="text-2xl font-bold text-indigo-600">{stats.ftAvecAP}</p>
             </div>
-            <div className="p-3 bg-orange-100 rounded-full">
-              <Clock className="w-6 h-6 text-orange-600" />
+            <div className="p-3 bg-indigo-100 rounded-full">
+              <Receipt className="w-6 h-6 text-indigo-600" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Barre de recherche et filtres */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          {/* Barre de recherche */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher par référence FT, nom, commune..."
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          {/* Filtres supplémentaires */}
-          <div className="flex flex-wrap gap-2">
-            {/* Filtre pour AP */}
-            <select
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={filtreAvis}
-              onChange={(e) => {
-                setFiltreAvis(e.target.value as 'tous' | 'avec_ap' | 'sans_ap');
-                setPage(1);
-              }}
-            >
-              <option value="tous">Tous les FT</option>
-              <option value="avec_ap">FT avec AP</option>
-              <option value="sans_ap">FT sans AP</option>
-            </select>
-
-            <select
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={pageSize}
-              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-            >
-              <option value="5">5 par page</option>
-              <option value="10">10 par page</option>
-              <option value="20">20 par page</option>
-              <option value="50">50 par page</option>
-            </select>
-
-            {(filtreAvis !== 'tous' || searchTerm) && (
-              <button
-                onClick={resetFiltres}
+      {/* SECTION 1: FT sans Avis de Paiement (Tableau du haut) */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div className="p-6 border-b border-slate-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-600" />
+               Avis de Paiement en cours
+                <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                  {stats.ftSansAP}
+                </span>
+              </h2>
+              <p className="text-slate-600 text-sm mt-1">
+                Procès-verbaux complets nécessitant un avis de paiement
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap gap-2">
+              <button 
                 className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm"
+                onClick={() => {
+                  fetchFTsComplets();
+                  fetchAvisList();
+                }}
               >
-                <XCircle className="w-4 h-4" />
-                Réinitialiser
+                <RefreshCw className="w-4 h-4" />
+                Actualiser
               </button>
-            )}
-
-            <button 
-              className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              onClick={() => {
-                fetchFTsComplets();
-                fetchAvisList();
-              }}
-            >
-              <RefreshCw className="w-4 h-4" />
-              Actualiser
-            </button>
+            </div>
           </div>
         </div>
 
-        {/* Tableau des FT avec dossier complet */}
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <p className="text-slate-600">Chargement des procès-verbaux...</p>
+        <div className="p-6">
+          {/* Barre de recherche et filtres pour FT sans AP */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher des FT sans AP par référence, nom, commune..."
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                value={searchTermSansAP}
+                onChange={(e) => setSearchTermSansAP(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                value={pageSizeSansAP}
+                onChange={(e) => handlePageSizeChangeSansAP(Number(e.target.value))}
+              >
+                <option value="5">5 par page</option>
+                <option value="10">10 par page</option>
+                <option value="20">20 par page</option>
+                <option value="50">50 par page</option>
+              </select>
+
+              {searchTermSansAP && (
+                <button
+                  onClick={resetFiltresSansAP}
+                  className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Réinitialiser
+                </button>
+              )}
             </div>
           </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-            <p className="text-red-700 font-medium">Erreur: {error}</p>
-            <button 
-              onClick={fetchFTsComplets}
-              className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              Réessayer
-            </button>
-          </div>
-        ) : filteredFts.length === 0 ? (
-          <div className="text-center p-8">
-            {searchTerm || filtreAvis !== 'tous' ? (
-              <FileWarning className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            ) : (
-              <FolderCheck className="w-16 h-16 text-emerald-300 mx-auto mb-4" />
-            )}
-            <h3 className="text-lg font-semibold text-slate-700 mb-2">
-              {searchTerm || filtreAvis !== 'tous'
-                ? 'Aucun procès-verbal trouvé' 
-                : 'Aucun procès-verbal avec dossier complet'}
-            </h3>
-            <p className="text-slate-500">
-              {searchTerm || filtreAvis !== 'tous'
-                ? `Aucun procès-verbal ne correspond à vos critères${filtreAvis !== 'tous' ? ` (${filtreAvis === 'avec_ap' ? 'avec AP' : 'sans AP'})` : ''}.`
-                : 'Tous les procès-verbaux disponibles ont des dossiers incomplets ou aucun dossier requis.'}
-            </p>
-            {(searchTerm || filtreAvis !== 'tous') && (
-              <button
-                onClick={resetFiltres}
-                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+
+          {/* Tableau des FT sans AP */}
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
+                <p className="text-slate-600">Chargement des FT sans avis de paiement...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+              <p className="text-red-700 font-medium">Erreur: {error}</p>
+              <button 
+                onClick={fetchFTsComplets}
+                className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
               >
-                Réinitialiser les filtres
+                Réessayer
               </button>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Référence FT
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Date/Heure
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Personne convoquée
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Localisation
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Statut Dossier
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      <div className="flex items-center gap-1">
-                        Avis existant
-                        {filtreAvis !== 'tous' && (
-                          <span className="px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded">
-                            {filtreAvis === 'avec_ap' ? '✓' : '✗'}
-                          </span>
-                        )}
-                      </div>
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {filteredFts.slice(startIndex, endIndex).map((ft) => {
-                    const existingAvis = getAvisForFt(ft.id);
-                    
-                    return (
-                      <tr key={ft.id} className="hover:bg-slate-50 transition-colors">
+            </div>
+          ) : filteredFtSansAP.length === 0 ? (
+            <div className="text-center p-8">
+              {searchTermSansAP ? (
+                <FileWarning className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              ) : (
+                <FolderCheck className="w-16 h-16 text-emerald-300 mx-auto mb-4" />
+              )}
+              <h3 className="text-lg font-semibold text-slate-700 mb-2">
+                {searchTermSansAP
+                  ? 'Aucun FT sans avis de paiement trouvé' 
+                  : 'Tous les FT ont un avis de paiement'}
+              </h3>
+              <p className="text-slate-500">
+                {searchTermSansAP
+                  ? 'Aucun FT sans avis de paiement ne correspond à votre recherche.'
+                  : 'Tous les procès-verbaux complets ont déjà un avis de paiement associé.'}
+              </p>
+              {searchTermSansAP && (
+                <button
+                  onClick={resetFiltresSansAP}
+                  className="mt-4 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+                >
+                  Réinitialiser la recherche
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-amber-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Référence FT
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Date/Heure
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Personne convoquée
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Localisation
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Statut Dossier
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {filteredFtSansAP.slice(startIndexSansAP, endIndexSansAP).map((ft) => (
+                      <tr key={ft.id} className="hover:bg-amber-50/30 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center mr-3">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mr-3">
                               <FileSignature className="w-4 h-4 text-white" />
                             </div>
                             <div>
@@ -564,21 +569,6 @@ export default function AvisContent() {
                             {ft.statut_dossier}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          {existingAvis ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="flex items-center gap-1">
-                                <Receipt className="w-3 h-3 text-blue-600" />
-                                <span className="text-xs font-medium text-blue-700">{existingAvis.num_ap}</span>
-                              </div>
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${getPaiementStatusColor(existingAvis.statut_paiement)}`}>
-                                {existingAvis.statut_paiement}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">Aucun avis</span>
-                          )}
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2">
                             <button
@@ -588,169 +578,351 @@ export default function AvisContent() {
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            {!existingAvis && (
-                              <button
-                                onClick={() => handleOpenCreateAvisModal(ft)}
-                                className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors"
-                                title="Créer avis de paiement"
-                              >
-                                <Receipt className="w-4 h-4" />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleOpenCreateAvisModal(ft)}
+                              className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors"
+                              title="Créer avis de paiement"
+                            >
+                              <Receipt className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination pour FT sans AP */}
+              <div className="flex items-center justify-between mt-6">
+                <div className="text-sm text-slate-600">
+                  {searchTermSansAP 
+                    ? `Affichage de ${startIndexSansAP + 1} à ${endIndexSansAP} sur ${filteredFtSansAP.length} résultats filtrés`
+                    : `Affichage de ${startIndexSansAP + 1} à ${endIndexSansAP} sur ${ftSansAP.length} résultats`}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setPageSansAP(prev => Math.max(1, prev - 1))}
+                    disabled={pageSansAP === 1}
+                    className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  {Array.from({ length: Math.min(5, totalPagesSansAPCalculated) }, (_, i) => {
+                    let pageNum;
+                    if (totalPagesSansAPCalculated <= 5) {
+                      pageNum = i + 1;
+                    } else if (pageSansAP <= 3) {
+                      pageNum = i + 1;
+                    } else if (pageSansAP >= totalPagesSansAPCalculated - 2) {
+                      pageNum = totalPagesSansAPCalculated - 4 + i;
+                    } else {
+                      pageNum = pageSansAP - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setPageSansAP(pageNum)}
+                        className={`w-10 h-10 rounded-lg border transition-colors ${pageSansAP === pageNum 
+                          ? 'bg-amber-500 text-white border-amber-500' 
+                          : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                      >
+                        {pageNum}
+                      </button>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-6">
-              <div className="text-sm text-slate-600">
-                {searchTerm || filtreAvis !== 'tous' 
-                  ? `Affichage de ${startIndex + 1} à ${endIndex} sur ${filteredFts.length} résultats filtrés`
-                  : `Affichage de ${startIndex + 1} à ${endIndex} sur ${totalCount} résultats`}
-                {filtreAvis !== 'tous' && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
-                    {filtreAvis === 'avec_ap' ? 'FT avec AP' : 'FT sans AP'}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                  disabled={page === 1}
-                  className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (page <= 3) {
-                    pageNum = i + 1;
-                  } else if (page >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = page - 2 + i;
-                  }
                   
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`w-10 h-10 rounded-lg border transition-colors ${page === pageNum 
-                        ? 'bg-blue-500 text-white border-blue-500' 
-                        : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-                
-                <button
-                  onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={page === totalPages}
-                  className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
+                  <button
+                    onClick={() => setPageSansAP(prev => Math.min(totalPagesSansAPCalculated, prev + 1))}
+                    disabled={pageSansAP === totalPagesSansAPCalculated}
+                    className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Tableau des avis de paiement existants */}
+      {/* SECTION 2: FT avec Avis de Paiement (Tableau du bas) - MODIFIÉ */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200">
         <div className="p-6 border-b border-slate-200">
-          <h2 className="text-xl font-semibold text-slate-900">Avis de paiement émis</h2>
-          <p className="text-slate-600 text-sm">Liste des avis de paiement déjà créés</p>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-indigo-600" />
+                Avis de paiement émis
+                <span className="px-2.5 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-sm font-medium">
+                  {stats.ftAvecAP}
+                </span>
+              </h2>
+              <p className="text-slate-600 text-sm mt-1">
+                Procès-verbaux complets avec avis de paiement associé
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap gap-2">
+              <button 
+                className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm"
+                onClick={() => {
+                  fetchFTsComplets();
+                  fetchAvisList();
+                }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Actualiser
+              </button>
+            </div>
+          </div>
         </div>
-        
-        {avisList.length === 0 ? (
-          <div className="p-8 text-center">
-            <Receipt className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-700 mb-2">Aucun avis de paiement</h3>
-            <p className="text-slate-500">Créez votre premier avis de paiement à partir d'un procès-verbal complet.</p>
+
+        <div className="p-6">
+          {/* Barre de recherche et filtres pour FT avec AP */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Rechercher des FT avec AP par référence, nom, commune..."
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                value={searchTermAvecAP}
+                onChange={(e) => setSearchTermAvecAP(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                value={pageSizeAvecAP}
+                onChange={(e) => handlePageSizeChangeAvecAP(Number(e.target.value))}
+              >
+                <option value="5">5 par page</option>
+                <option value="10">10 par page</option>
+                <option value="20">20 par page</option>
+                <option value="50">50 par page</option>
+              </select>
+
+              {searchTermAvecAP && (
+                <button
+                  onClick={resetFiltresAvecAP}
+                  className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Réinitialiser
+                </button>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">N° AP</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Référence FT</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Montant</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Date</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Statut</th>
-                  <th className="text-left py-4 px-6 text-sm font-semibold text-slate-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {avisList.map((avis) => {
-                  const ft = fts.find(f => f.id === avis.idft);
-                  
-                  return (
-                    <tr key={avis.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-2">
-                          <Receipt className="w-4 h-4 text-blue-600" />
-                          <span className="font-medium text-slate-900">{avis.num_ap}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="text-slate-700">
-                          {ft?.reference_ft || `FT-${avis.idft}`}
-                        </div>
-                        {ft?.nom_convoquee && (
-                          <div className="text-xs text-slate-500">{ft.nom_convoquee}</div>
-                        )}
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className="font-semibold text-slate-900">{formatMontant(avis.montant)} Ar</span>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                          <span className="text-slate-700">{formatDate(avis.date_ap)}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${getPaiementStatusColor(avis.statut_paiement)}`}>
-                          {avis.statut_paiement === 'Payé' ? (
-                            <CheckCircle className="w-3 h-3" />
-                          ) : avis.statut_paiement === 'En attente' ? (
-                            <Clock className="w-3 h-3" />
-                          ) : (
-                            <XCircle className="w-3 h-3" />
-                          )}
-                          {avis.statut_paiement}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex gap-2">
-                          <button className="text-blue-600 hover:text-blue-800 text-sm">
-                            Détails
-                          </button>
-                          <button className="text-emerald-600 hover:text-emerald-800 text-sm">
-                            Modifier
-                          </button>
-                        </div>
-                      </td>
+
+          {/* Tableau des FT avec AP - NOUVELLE ORGANISATION */}
+          {loadingAvis ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto mb-4"></div>
+                <p className="text-slate-600">Chargement des FT avec avis de paiement...</p>
+              </div>
+            </div>
+          ) : filteredFtAvecAP.length === 0 ? (
+            <div className="text-center p-8">
+              {searchTermAvecAP ? (
+                <FileWarning className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              ) : (
+                <Receipt className="w-16 h-16 text-indigo-300 mx-auto mb-4" />
+              )}
+              <h3 className="text-lg font-semibold text-slate-700 mb-2">
+                {searchTermAvecAP
+                  ? 'Aucun FT avec avis de paiement trouvé' 
+                  : 'Aucun FT avec avis de paiement'}
+              </h3>
+              <p className="text-slate-500">
+                {searchTermAvecAP
+                  ? 'Aucun FT avec avis de paiement ne correspond à votre recherche.'
+                  : 'Créez votre premier avis de paiement à partir d\'un procès-verbal complet.'}
+              </p>
+              {searchTermAvecAP && (
+                <button
+                  onClick={resetFiltresAvecAP}
+                  className="mt-4 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600"
+                >
+                  Réinitialiser la recherche
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-indigo-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Référence FT
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Personne convoquée
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Localisation
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Avis de Paiement
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Date AP
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Montant
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Actions
+                      </th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {filteredFtAvecAP.slice(startIndexAvecAP, endIndexAvecAP).map((ft) => {
+                      const existingAvis = getAvisForFt(ft.id);
+                      
+                      return (
+                        <tr key={ft.id} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mr-3">
+                                <FileSignature className="w-4 h-4 text-white" />
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-slate-900">{ft.reference_ft}</div>
+                                <div className="text-xs text-slate-500">
+                                  {formatDate(ft.date_ft)} {formatTime(ft.heure_ft)}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-slate-900">{ft.nom_convoquee || ft.nom_personne_r || 'Non spécifié'}</div>
+                            <div className="text-xs text-slate-500 capitalize">{ft.type_convoquee || 'Non spécifié'}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              <span className="text-sm text-slate-600">
+                                {ft.commune || 'N/A'} {ft.fokontany && `- ${ft.fokontany}`}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {existingAvis && (
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1">
+                                  <Receipt className="w-3 h-3 text-indigo-600" />
+                                  <span className="text-xs font-medium text-indigo-700">{existingAvis.num_ap}</span>
+                                </div>
+                                <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${getPaiementStatusColor(existingAvis.statut_paiement)}`}>
+                                  {existingAvis.statut_paiement === 'Payé' ? (
+                                    <CheckCircle className="w-2.5 h-2.5" />
+                                  ) : existingAvis.statut_paiement === 'En attente' ? (
+                                    <Clock className="w-2.5 h-2.5" />
+                                  ) : (
+                                    <XCircle className="w-2.5 h-2.5" />
+                                  )}
+                                  {existingAvis.statut_paiement}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {existingAvis && (
+                              <div className="text-sm text-slate-900">
+                                {formatDate(existingAvis.date_ap)}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            {existingAvis && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm font-semibold text-slate-900">
+                                  {formatMontant(existingAvis.montant)} Ar
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleViewDetails(ft)}
+                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                title="Voir détails du FT"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                             
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination pour FT avec AP */}
+              <div className="flex items-center justify-between mt-6">
+                <div className="text-sm text-slate-600">
+                  {searchTermAvecAP 
+                    ? `Affichage de ${startIndexAvecAP + 1} à ${endIndexAvecAP} sur ${filteredFtAvecAP.length} résultats filtrés`
+                    : `Affichage de ${startIndexAvecAP + 1} à ${endIndexAvecAP} sur ${ftAvecAP.length} résultats`}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setPageAvecAP(prev => Math.max(1, prev - 1))}
+                    disabled={pageAvecAP === 1}
+                    className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  {Array.from({ length: Math.min(5, totalPagesAvecAPCalculated) }, (_, i) => {
+                    let pageNum;
+                    if (totalPagesAvecAPCalculated <= 5) {
+                      pageNum = i + 1;
+                    } else if (pageAvecAP <= 3) {
+                      pageNum = i + 1;
+                    } else if (pageAvecAP >= totalPagesAvecAPCalculated - 2) {
+                      pageNum = totalPagesAvecAPCalculated - 4 + i;
+                    } else {
+                      pageNum = pageAvecAP - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setPageAvecAP(pageNum)}
+                        className={`w-10 h-10 rounded-lg border transition-colors ${pageAvecAP === pageNum 
+                          ? 'bg-indigo-500 text-white border-indigo-500' 
+                          : 'border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  
+                  <button
+                    onClick={() => setPageAvecAP(prev => Math.min(totalPagesAvecAPCalculated, prev + 1))}
+                    disabled={pageAvecAP === totalPagesAvecAPCalculated}
+                    className="p-2 rounded-lg border border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
+      {/* Modals restent inchangés */}
       {/* Modal de création d'avis de paiement */}
       {showCreateAvisModal && selectedFtForAvis && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

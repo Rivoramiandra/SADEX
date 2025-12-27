@@ -1169,7 +1169,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
             <div>
               <h2 className="text-2xl font-bold text-slate-900">
                 <FileSignature className="inline-block w-6 h-6 mr-2 text-green-600" />
-                Procès-verbal de Fin de Traitement
+                Procès-verbal (Fitanana an-Tsoratra)
               </h2>
               <p className="text-slate-600 mt-1">
                 Rendez-vous RDV-{selectedRendezvous.id} - DS-{selectedRendezvous.iddescente}
@@ -1931,23 +1931,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
               >
                 Annuler
               </button>
-              <button
-                onClick={handleGeneratePDF}
-                disabled={saving || generatingPDF || !descenteData || !ftData.reference_ft}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {generatingPDF ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Génération...
-                  </>
-                ) : (
-                  <>
-                    <Printer className="w-4 h-4" />
-                    Générer PDF
-                  </>
-                )}
-              </button>
+
               <button
                 onClick={handleSubmitFT}
                 disabled={saving || generatingPDF || loading}
