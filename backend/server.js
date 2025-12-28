@@ -18,6 +18,7 @@ const titresSansNomRoutes = require("./routes/titresansnomRoutes");
 const fokontanyRoutes = require('./routes/fokontanyRoutes');
 const statsRoutes = require('./routes/statsDescentes'); 
 const statRendezVousRoutes = require('./routes/statRendezVous');
+const statApRoutes = require('./routes/statRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -48,6 +49,7 @@ app.use("/api/titres-sans-nom", titresSansNomRoutes);
 app.use('/api/fokontany', fokontanyRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/stats/rendezvous', statRendezVousRoutes);
+app.use('/api', statApRoutes);
 
 // Route de test santé du serveur
 app.get('/api/health', (req, res) => {
