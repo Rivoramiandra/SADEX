@@ -61,7 +61,7 @@ const StatCard = ({
   </div>
 );
 
-// 1. MODIFIÉ: Area Chart avec 3 zones: Nombre descentes, PAT, FIFAFI - 60%
+// 1. Area Chart avec 3 zones: Nombre descentes, PAT, FIFAFI - 60%
 const MonthlyActivityChart = ({ data }) => {
   return (
     <div className="h-[300px]">
@@ -116,10 +116,10 @@ const MonthlyActivityChart = ({ data }) => {
             labelFormatter={(label) => `Mois: ${label}`}
           />
           {/* Légende visible par défaut */}
-          <Legend 
-            verticalAlign="top" 
-            height={36} 
-            iconType="circle" 
+          <Legend
+            verticalAlign="top"
+            height={36}
+            iconType="circle"
             iconSize={8}
             wrapperStyle={{ paddingBottom: '10px' }}
             formatter={(value) => {
@@ -176,6 +176,7 @@ const GlobalActivityChart = ({ data }) => {
     { category: 'PAT', value: parseInt(data.total_pv_pat_global || 0), color: '#10b981' },
     { category: 'FIFAFI', value: parseInt(data.total_fifafi_global || 0), color: '#8b5cf6' },
   ];
+  
   return (
     <div className="h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -211,10 +212,10 @@ const GlobalActivityChart = ({ data }) => {
             }}
           />
           {/* Légende visible par défaut */}
-          <Legend 
-            verticalAlign="top" 
-            height={36} 
-            iconType="circle" 
+          <Legend
+            verticalAlign="top"
+            height={36}
+            iconType="circle"
             iconSize={8}
             wrapperStyle={{ paddingBottom: '10px' }}
           />
@@ -238,7 +239,7 @@ const GlobalActivityChart = ({ data }) => {
   );
 };
 
-// 2. MODIFIÉ: Pie Chart avec nouvelles infractions - avec légende
+// 2. MODIFIÉ: Pie Chart avec nouvelles infractions - corrigé pour correspondre à l'API
 const RadialPieChart = ({
   data,
   title
@@ -246,6 +247,17 @@ const RadialPieChart = ({
   data: { name: string; value: number; color: string }[];
   title: string;
 }) => {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  
+  if (total === 0) {
+    return (
+      <div className="h-[300px] flex flex-col items-center justify-center">
+        <AlertTriangle className="w-12 h-12 text-slate-300 mb-4" />
+        <p className="text-slate-500">Aucune infraction enregistrée</p>
+      </div>
+    );
+  }
+  
   return (
     <div className="h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -284,10 +296,10 @@ const RadialPieChart = ({
             }}
           />
           {/* Légende visible par défaut */}
-          <Legend 
-            verticalAlign="bottom" 
-            height={36} 
-            iconType="circle" 
+          <Legend
+            verticalAlign="bottom"
+            height={36}
+            iconType="circle"
             iconSize={8}
             wrapperStyle={{ paddingTop: '10px' }}
             formatter={(value, entry) => {
@@ -302,7 +314,7 @@ const RadialPieChart = ({
             dominantBaseline="middle"
             className="text-xl font-bold fill-slate-900"
           >
-            {data.reduce((sum, item) => sum + item.value, 0)}
+            {total}
           </text>
           <text
             x="50%"
@@ -319,16 +331,16 @@ const RadialPieChart = ({
   );
 };
 
-// 3. MODIFIÉ: Bar Chart vertical pour nombre de descentes par district - adapté à l'API
+// 3. Bar Chart vertical pour nombre de descentes par district - adapté à l'API
 const DistrictBarChart = ({ data, filter }) => {
   // Préparation des données pour le bar chart
   const prepareChartData = () => {
     if (!data) return [];
-    
+   
     let sourceData;
     if (filter === 'monthly') {
       // Données mensuelles - filtrer les districts avec nombre_descentes > 0
-      sourceData = data.mensuelParDistrict 
+      sourceData = data.mensuelParDistrict
         ? data.mensuelParDistrict
             .filter(item => parseInt(item.nombre_descentes || 0) > 0)
             .map(item => ({
@@ -339,7 +351,7 @@ const DistrictBarChart = ({ data, filter }) => {
         : [];
     } else {
       // Données globales - filtrer les districts avec total_global > 0
-      sourceData = data.totalParDistrict 
+      sourceData = data.totalParDistrict
         ? data.totalParDistrict
             .filter(item => parseInt(item.total_global || 0) > 0)
             .map(item => ({
@@ -349,28 +361,28 @@ const DistrictBarChart = ({ data, filter }) => {
             }))
         : [];
     }
-    
+   
     // Trier par nombre de descentes décroissant
     return sourceData.sort((a, b) => b.descentes - a.descentes);
   };
-
+  
   // Fonction pour déterminer la zone d'un district (pour les données mensuelles)
   const getZoneForDistrict = (districtName) => {
     if (!data?.totalParDistrict) return 'CUA';
-    
-    const districtInfo = data.totalParDistrict.find(item => 
+   
+    const districtInfo = data.totalParDistrict.find(item =>
       item.district === districtName
     );
     return districtInfo?.zone || 'CUA';
   };
-
+  
   // Fonction pour obtenir la couleur basée sur la zone
   const getColorForZone = (zone) => {
     return zone === 'CUA' ? '#3b82f6' : '#10b981';
   };
-
+  
   const chartData = prepareChartData();
-
+  
   // Si pas de données, afficher un message
   if (chartData.length === 0) {
     return (
@@ -379,7 +391,7 @@ const DistrictBarChart = ({ data, filter }) => {
       </div>
     );
   }
-
+  
   return (
     <div className="h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -431,10 +443,10 @@ const DistrictBarChart = ({ data, filter }) => {
             }}
           />
           {/* Légende visible par défaut */}
-          <Legend 
-            verticalAlign="top" 
-            height={36} 
-            iconType="circle" 
+          <Legend
+            verticalAlign="top"
+            height={36}
+            iconType="circle"
             iconSize={8}
             wrapperStyle={{ paddingBottom: '10px' }}
             formatter={(value) => {
@@ -463,28 +475,28 @@ const DistrictBarChart = ({ data, filter }) => {
   );
 };
 
-// 4. MODIFIÉ: Pie Chart CUA vs Périphérique avec données dynamiques de l'API et légende
+// 4. Pie Chart CUA vs Périphérique avec données dynamiques de l'API et légende
 const CUAPeripheriquePieChart = ({ data, filter }) => {
   // Préparation des données pour le pie chart
   const chartData = [
-    { 
-      name: 'CUA', 
-      value: filter === 'monthly' 
-        ? parseInt(data?.mensuel?.[0]?.total_cua || 0) 
-        : parseInt(data?.global?.cua_global || 0), 
-      color: '#3b82f6' 
+    {
+      name: 'CUA',
+      value: filter === 'monthly'
+        ? parseInt(data?.mensuel?.[0]?.total_cua || 0)
+        : parseInt(data?.global?.cua_global || 0),
+      color: '#3b82f6'
     },
-    { 
-      name: 'Périphérique', 
-      value: filter === 'monthly' 
-        ? parseInt(data?.mensuel?.[0]?.total_peripherie || 0) 
-        : parseInt(data?.global?.peripherie_global || 0), 
-      color: '#10b981' 
+    {
+      name: 'Périphérique',
+      value: filter === 'monthly'
+        ? parseInt(data?.mensuel?.[0]?.total_peripherie || 0)
+        : parseInt(data?.global?.peripherie_global || 0),
+      color: '#10b981'
     },
   ];
-
-  const total = chartData.reduce((sum, item) => sum + item.value, 0);
   
+  const total = chartData.reduce((sum, item) => sum + item.value, 0);
+ 
   // Si pas de données, afficher un message
   if (total === 0) {
     return (
@@ -493,7 +505,7 @@ const CUAPeripheriquePieChart = ({ data, filter }) => {
       </div>
     );
   }
-
+  
   return (
     <div className="h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -531,10 +543,10 @@ const CUAPeripheriquePieChart = ({ data, filter }) => {
             }}
           />
           {/* Légende visible par défaut */}
-          <Legend 
-            verticalAlign="bottom" 
-            height={36} 
-            iconType="circle" 
+          <Legend
+            verticalAlign="bottom"
+            height={36}
+            iconType="circle"
             iconSize={8}
             wrapperStyle={{ paddingTop: '10px' }}
             formatter={(value, entry) => {
@@ -582,21 +594,22 @@ export default function DescenteDashboard() {
     { month: 'Nov', descentes: 0, pat: 0, fifafi: 0 },
     { month: 'Dec', descentes: 0, pat: 0, fifafi: 0 },
   ]);
-
+  
   const [globalData, setGlobalData] = useState({});
   const [activityFilter, setActivityFilter] = useState('monthly');
-  
+ 
   // État pour les données zones CUA/Périphérique
   const [zonesData, setZonesData] = useState(null);
   const [zonesFilter, setZonesFilter] = useState('monthly');
-  
-  // NOUVEAU: État pour les données districts
+ 
+  // État pour les données districts
   const [districtsData, setDistrictsData] = useState(null);
   const [districtsFilter, setDistrictsFilter] = useState('monthly');
-  
+ 
   const [infractionsRawData, setInfractionsRawData] = useState(null);
   const [infractionsFilter, setInfractionsFilter] = useState('all');
-
+  
+  // Récupération des données mensuelles et globales
   useEffect(() => {
     fetch('http://localhost:3000/api/stats/monthly')
       .then(res => res.json())
@@ -609,6 +622,7 @@ export default function DescenteDashboard() {
             pat: 0,
             fifafi: 0
           }));
+          
           (json.data.mensuel || []).forEach(item => {
             const index = parseInt(item.month_num) - 1;
             if (index >= 0 && index < 12) {
@@ -620,13 +634,14 @@ export default function DescenteDashboard() {
               };
             }
           });
+          
           setMonthlyData(data);
           setGlobalData(json.data.global || {});
         }
       })
       .catch(err => console.error('Error fetching monthly stats:', err));
   }, []);
-
+  
   // Récupération des données zones
   useEffect(() => {
     fetch('http://localhost:3000/api/stats/zones')
@@ -638,8 +653,8 @@ export default function DescenteDashboard() {
       })
       .catch(err => console.error('Error fetching zones stats:', err));
   }, []);
-
-  // NOUVEAU: Récupération des données districts
+  
+  // Récupération des données districts
   useEffect(() => {
     fetch('http://localhost:3000/api/stats/districts')
       .then(res => res.json())
@@ -650,7 +665,8 @@ export default function DescenteDashboard() {
       })
       .catch(err => console.error('Error fetching districts stats:', err));
   }, []);
-
+  
+  // Récupération des données infractions
   useEffect(() => {
     fetch('http://localhost:3000/api/stats/infractions')
       .then(res => res.json())
@@ -661,27 +677,34 @@ export default function DescenteDashboard() {
       })
       .catch(err => console.error('Error fetching infractions stats:', err));
   }, []);
-
+  
+  // Fonction pour préparer les données d'infractions
   const getInfractionsData = () => {
     if (!infractionsRawData) return [];
-    
-    let source;
+   
     if (infractionsFilter === 'monthly' && infractionsRawData.par_mois && infractionsRawData.par_mois.length > 0) {
-      source = infractionsRawData.par_mois[0];
+      // Pour les données mensuelles
+      const monthlyData = infractionsRawData.par_mois[0];
+      return [
+        { name: 'Remblai Illicite', value: parseInt(monthlyData.remblai_illicite || 0), color: '#ef4444' },
+        { name: 'Construction sur Remblai', value: parseInt(monthlyData.construction_sur_remblai || 0), color: '#f97316' },
+        { name: 'Remblai Récent', value: parseInt(monthlyData.remblai_recent || 0), color: '#3b82f6' },
+        { name: 'Cellage', value: parseInt(monthlyData.cellage || 0), color: '#8b5cf6' },
+      ].filter(item => item.value > 0);
     } else {
-      source = infractionsRawData.cumul_general;
+      // Pour les données cumulées (all)
+      const cumulativeData = infractionsRawData.cumul_general;
+      return [
+        { name: 'Remblai Illicite', value: parseInt(cumulativeData.total_remblai || 0), color: '#ef4444' },
+        { name: 'Construction sur Remblai', value: parseInt(cumulativeData.total_construction || 0), color: '#f97316' },
+        { name: 'Remblai Récent', value: parseInt(cumulativeData.total_recent || 0), color: '#3b82f6' },
+        { name: 'Cellage', value: parseInt(cumulativeData.total_cellage || 0), color: '#8b5cf6' },
+      ].filter(item => item.value > 0);
     }
-
-    return [
-      { name: 'Remblai Illicite', value: parseInt(source.remblai_illicite || source.total_remblai || 0), color: '#ef4444' },
-      { name: 'Construction sur Remblai Illicite', value: parseInt(source.construction_sur_remblai || source.total_construction || 0), color: '#f97316' },
-      { name: 'Remblai Illicite recent', value: parseInt(source.remblai_recent || source.total_recent || 0), color: '#3b82f6' },
-      { name: 'Cellage', value: parseInt(source.cellage || source.total_cellage || 0), color: '#8b5cf6' },
-    ].filter(item => item.value > 0);
   };
-
+  
   const infractionsData = getInfractionsData();
-
+  
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Première paire: 60% Activity Chart + 40% Pie Chart */}
@@ -721,7 +744,7 @@ export default function DescenteDashboard() {
             <GlobalActivityChart data={globalData} />
           )}
         </div>
-
+        
         {/* Pie Chart - 40% (col-span-5) */}
         <div className="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-6">
@@ -757,7 +780,7 @@ export default function DescenteDashboard() {
           />
         </div>
       </div>
-
+      
       {/* Deuxième paire: 40% Pie Chart CUA vs Périphérique + 60% Bar Chart District */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         {/* Pie Chart CUA vs Périphérique - 40% (col-span-5) */}
@@ -789,12 +812,12 @@ export default function DescenteDashboard() {
               <Building className="w-5 h-5 text-slate-400" />
             </div>
           </div>
-          <CUAPeripheriquePieChart 
-            data={zonesData} 
+          <CUAPeripheriquePieChart
+            data={zonesData}
             filter={zonesFilter}
           />
         </div>
-
+        
         {/* Bar Chart District - 60% (col-span-7) */}
         <div className="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-6">
@@ -824,12 +847,12 @@ export default function DescenteDashboard() {
               <MapPin className="w-5 h-5 text-slate-400" />
             </div>
           </div>
-          <DistrictBarChart 
-            data={districtsData} 
+          <DistrictBarChart
+            data={districtsData}
             filter={districtsFilter}
           />
         </div>
       </div>
     </div>
   );
-} 
+}

@@ -71,14 +71,6 @@ const descenteIconVert = new L.DivIcon({
   iconAnchor: [10, 10],
   popupAnchor: [0, -10],
 });
-// Icône pour le point de descente dans le polygone (ORANGE) - maintenant le centre
-const descentePointInPolygonIcon = new L.DivIcon({
-  className: "custom-descente-in-polygon-icon",
-  html: '<div style="width:14px;height:14px;background-color:#f97316;border:3px solid white;border-radius:50%;box-shadow:0 0 10px rgba(0,0,0,0.8);"></div>',
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-  popupAnchor: [0, -10],
-});
 // Icône pour le résultat de recherche
 const searchIcon = new L.DivIcon({
   className: "custom-search-icon",
@@ -135,31 +127,82 @@ const isDefaultCoordinates = (lat, lng) => {
   return lat === -18.8792 && lng === 47.5079;
 };
 
+// Fonction unifiée pour obtenir les IDs quelle que soit la structure
+const getDescenteIds = (descente) => {
+  // Si les IDs sont dans details
+  if (descente.details) {
+    return {
+      ft_id: descente.details.ft_id || descente.details.ftId || null,
+      avis_id: descente.details.avis_id || descente.details.avisId || null,
+      paiement_id: descente.details.paiement_id || descente.details.paiementId || null
+    };
+  }
+  
+  // Si les IDs sont au niveau principal
+  return {
+    ft_id: descente.ft_id || descente.ftId || null,
+    avis_id: descente.avis_id || descente.avisId || null,
+    paiement_id: descente.paiement_id || descente.paiementId || null
+  };
+};
+
 // Fonction pour déterminer la couleur d'une descente
 const getDescenteCouleur = (descente) => {
-  const { details } = descente;
-  if (details?.paiement_id) return 'vert';
-  if (details?.avis_id) return 'bleu';
-  if (details?.ft_id) return 'jaune';
+  const ids = getDescenteIds(descente);
+  
+  if (ids.paiement_id) return 'vert';
+  if (ids.avis_id) return 'bleu';
+  if (ids.ft_id) return 'jaune';
+  
   return 'rouge';
 };
 
 // Fonction pour déterminer le statut affiché
 const getDescenteStatut = (descente) => {
-  const { details } = descente;
-  if (details?.paiement_id) return 'Paiement effectué';
-  if (details?.avis_id) return 'Avis de paiement émis';
-  if (details?.ft_id) return 'FT créé';
+  const ids = getDescenteIds(descente);
+  
+  if (ids.paiement_id) return 'Paiement effectué';
+  if (ids.avis_id) return 'Avis de paiement émis';
+  if (ids.ft_id) return 'FT créé';
+  
   return 'En attente';
 };
 
-// Fonction pour obtenir l'icône d'une descente
+// Fonction pour obtenir l'icône d'une descente (points simples)
 const getDescenteIcon = (descente) => {
-  const { details } = descente;
-  if (details?.paiement_id) return descenteIconVert;
-  if (details?.avis_id) return descenteIconBleu;
-  if (details?.ft_id) return descenteIconJaune;
-  return descenteIconRouge;
+  const couleur = getDescenteCouleur(descente);
+  
+  const icons = {
+    rouge: descenteIconRouge,
+    jaune: descenteIconJaune,
+    bleu: descenteIconBleu,
+    vert: descenteIconVert
+  };
+  
+  return icons[couleur] || descenteIconRouge;
+};
+
+// Fonction pour obtenir l'icône du point dans le polygone
+const getDescentePointInPolygonIcon = (descente) => {
+  const couleur = getDescenteCouleur(descente);
+  
+  // Définir les couleurs pour chaque état
+  const colorMap = {
+    rouge: '#ef4444',  // Rouge
+    jaune: '#eab308',  // Jaune
+    bleu: '#3b82f6',   // Bleu
+    vert: '#22c55e'    // Vert
+  };
+  
+  const color = colorMap[couleur] || '#f97316'; // Orange par défaut
+  
+  return new L.DivIcon({
+    className: "custom-descente-in-polygon-icon",
+    html: `<div style="width:16px;height:16px;background-color:${color};border:3px solid white;border-radius:50%;box-shadow:0 0 10px rgba(0,0,0,0.8);"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11],
+  });
 };
 
 // Fonction pour formater une date
@@ -214,6 +257,7 @@ const calculatePolygonCenter = (polygon) => {
 const DetailedPopup = ({ descente }) => {
   const couleur = getDescenteCouleur(descente);
   const statut = getDescenteStatut(descente);
+  const ids = getDescenteIds(descente);
   
   return (
     <div className="space-y-3 min-w-[320px] max-h-[70vh] overflow-y-auto p-1">
@@ -247,7 +291,7 @@ const DetailedPopup = ({ descente }) => {
               <div className="text-blue-800">
                 X: {parseFloat(descente.laborde_x).toFixed(2)}<br/>
                 Y: {parseFloat(descente.laborde_y).toFixed(2)}
-            </div>
+              </div>
             </div>
           )}
           {descente.has_polygon && (
@@ -282,29 +326,29 @@ const DetailedPopup = ({ descente }) => {
         <div className="text-sm space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${descente.details?.ft_id ? 'bg-yellow-500' : 'bg-gray-300'}`}></div>
+              <div className={`w-3 h-3 rounded-full ${ids.ft_id ? 'bg-yellow-500' : 'bg-gray-300'}`}></div>
               <span className="text-slate-600">FT créé:</span>
             </div>
-            <span className={`font-medium ${descente.details?.ft_id ? 'text-green-600' : 'text-red-600'}`}>
-              {descente.details?.ft_id ? '✓ Fini' : '⨯ Non fini'}
+            <span className={`font-medium ${ids.ft_id ? 'text-green-600' : 'text-red-600'}`}>
+              {ids.ft_id ? '✓ Fini' : '⨯ Non fini'}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${descente.details?.avis_id ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+              <div className={`w-3 h-3 rounded-full ${ids.avis_id ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
               <span className="text-slate-600">Avis de paiement:</span>
             </div>
-            <span className={`font-medium ${descente.details?.avis_id ? 'text-green-600' : 'text-red-600'}`}>
-              {descente.details?.avis_id ? '✓ Fini' : '⨯ Non fini'}
+            <span className={`font-medium ${ids.avis_id ? 'text-green-600' : 'text-red-600'}`}>
+              {ids.avis_id ? '✓ Fini' : '⨯ Non fini'}
             </span>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${descente.details?.paiement_id ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+              <div className={`w-3 h-3 rounded-full ${ids.paiement_id ? 'bg-green-500' : 'bg-gray-300'}`}></div>
               <span className="text-slate-600">Paiement:</span>
             </div>
-            <span className={`font-medium ${descente.details?.paiement_id ? 'text-green-600' : 'text-red-600'}`}>
-              {descente.details?.paiement_id ? '✓ Fini' : '⨯ Non fini'}
+            <span className={`font-medium ${ids.paiement_id ? 'text-green-600' : 'text-red-600'}`}>
+              {ids.paiement_id ? '✓ Fini' : '⨯ Non fini'}
             </span>
           </div>
         </div>
@@ -511,6 +555,24 @@ const DetailedPopup = ({ descente }) => {
               <span className="font-medium">ID Descente:</span>
               <div className="text-slate-600">{descente.id}</div>
             </div>
+            {ids.ft_id && (
+              <div>
+                <span className="font-medium">ID FT:</span>
+                <div className="text-slate-600">{ids.ft_id}</div>
+              </div>
+            )}
+            {ids.avis_id && (
+              <div>
+                <span className="font-medium">ID Avis:</span>
+                <div className="text-slate-600">{ids.avis_id}</div>
+              </div>
+            )}
+            {ids.paiement_id && (
+              <div>
+                <span className="font-medium">ID Paiement:</span>
+                <div className="text-slate-600">{ids.paiement_id}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -621,12 +683,12 @@ const DescentePolygonLayer = ({ descentes, showPolygons }) => {
               </Popup>
             </LeafletPolygon>
             
-            {/* Point de descente au CENTRE du polygone */}
+            {/* Point de descente au CENTRE du polygone avec couleur dynamique */}
             {descente.displayLat && descente.displayLng && (
               <Marker
                 key={`descente-point-center-${descente.id}`}
                 position={[descente.displayLat, descente.displayLng]}
-                icon={descentePointInPolygonIcon}
+                icon={getDescentePointInPolygonIcon(descente)}
                 zIndexOffset={1000}
               >
                 <Popup>
@@ -1846,7 +1908,17 @@ export default function CartographieContent() {
           throw new Error(`Erreur HTTP: ${resDescentes.status}`);
         }
         const response = await resDescentes.json();
+        
+        // Debug: voir la structure des données
+        console.log("Réponse API complète:", response);
+        
         if (response.success && Array.isArray(response.data)) {
+          // Afficher la première descente pour voir la structure
+          if (response.data.length > 0) {
+            console.log("Structure de la première descente:", response.data[0]);
+            console.log("Détails de la première descente:", response.data[0].details);
+          }
+          
           const processedDescentes = response.data.map((item) => {
             // Vérifier si on a des coordonnées Laborde
             const hasLaborde = isLabordeCoordinates(item.laborde_x, item.laborde_y);
@@ -1884,6 +1956,23 @@ export default function CartographieContent() {
                 displayLng = item.lng;
               }
               hasValidCoordinates = !isDefaultCoordinates(displayLat, displayLng);
+            }
+           
+            // Extraire les détails correctement
+            let details = {};
+            
+            // Si les détails sont directement dans l'objet
+            if (item.details) {
+              details = item.details;
+            } 
+            // Si les IDs sont dans l'objet principal
+            else {
+              details = {
+                ft_id: item.ft_id || item.ftId || null,
+                avis_id: item.avis_id || item.avisId || null,
+                paiement_id: item.paiement_id || item.paiementId || null,
+                statut_paiement: item.statut_paiement || null
+              };
             }
            
             return {
@@ -1929,12 +2018,14 @@ export default function CartographieContent() {
               polygon_geojson: item.polygon_geojson || null,
               polygon_points: item.polygon_points || null,
               has_polygon: !!item.polygon_geojson,
-              details: item.details || {
-                ft_id: null,
-                avis_id: null,
-                paiement_id: null,
-                statut_paiement: null
-              }
+             
+              // Détails
+              details: details,
+             
+              // Conserver aussi les IDs au niveau principal pour compatibilité
+              ft_id: item.ft_id || item.ftId || null,
+              avis_id: item.avis_id || item.avisId || null,
+              paiement_id: item.paiement_id || item.paiementId || null
             };
           });
           const allDescentes = processedDescentes.filter(d =>
@@ -2425,8 +2516,20 @@ export default function CartographieContent() {
                   <h5 className="text-xs font-medium text-slate-700 mb-1">Points dans Polygone</h5>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-orange-600 border-2 border-white shadow-md"></div>
-                      <span className="text-xs text-slate-600">Point de descente (centre)</span>
+                      <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-md"></div>
+                      <span className="text-xs text-slate-600">En attente</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500 border-2 border-white shadow-md"></div>
+                      <span className="text-xs text-slate-600">FT créé</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-md"></div>
+                      <span className="text-xs text-slate-600">Avis émis</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-md"></div>
+                      <span className="text-xs text-slate-600">Paiement fait</span>
                     </div>
                   </div>
                 </div>

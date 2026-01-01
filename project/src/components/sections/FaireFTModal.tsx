@@ -378,7 +378,7 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
       pdfContent.style.boxSizing = 'border-box';
       
       // Appliquer les styles directement
-      pdfContent.innerHTML = `
+pdfContent.innerHTML = `
         <style>
           body {
             margin: 0;
@@ -401,32 +401,32 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
           }
          
           .header-image {
-            height: 100px;
+            height: 180px;
             width: 100%;
             background-image: url('${headerImage}');
             background-size: cover;
             background-repeat: no-repeat;
-            background-position: center;
-            margin-bottom: 5px;
+            margin-bottom: 20px;
           }
          
           .logo-center {
-            height: 80px;
-            width: 80%;
+            height: 90px;
+            width: 90%;
             position: relative;
-            top: -90px;
+            top: -120px;
             background-image: url('${emblemImage}');
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center center;
             margin: 0 auto;
-            margin-bottom: -120px;
           }
          
           .content-wrapper {
             padding: 10mm;
             position: relative;
+            top: -120px;
             min-height: calc(297mm - 200px - 250px - 30mm);
+
           }
          
           .header-section {
@@ -505,14 +505,15 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
           }
          
           .footer-image {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 100px;
+            height: 250px;
             background-image: url('${footerImage}');
             background-size: cover;
-            background-position: center;
+            background-repeat: no-repeat;
+            background-position: center center;
+            background-color: transparent;
+            position: absolute;
+            bottom: 0;
+            width: 100%;
           }
          
           .bold {
@@ -533,45 +534,46 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
          
           <!-- Logo central -->
           <div class="logo-center"></div>
+          
           <!-- Contenu du document -->
           <div class="content-wrapper">
             <!-- En-tête avec trois colonnes -->
             <div class="header-section">
               <div class="left-column">
-                <div class="bold" style="margin-bottom: 2px;">MINISITERAN'NY FITSINJIRAM-PAHEFANA</div>
-                <div class="bold" style="margin-bottom: 2px;">SY NY FANAJARIANA NY TANY</div>
+                <div class="bold" style="margin-bottom: 2px;">MINISTÈRE DE LA FONCTION PUBLIQUE</div>
+                <div class="bold" style="margin-bottom: 2px;">ET DE LA GESTION DU TERRITOIRE</div>
                 <div style="margin-bottom: 5px;">-------------------</div>
-                <div class="italic" style="margin-bottom: 2px;">DIRECTION GENERALE</div>
-                <div class="italic" style="margin-bottom: 2px;">NY FAHEFANA MIKAROKA NY FIAROVANA NY LEMAKA</div>
-                <div class="italic" style="margin-bottom: 2px;">ANTANANARIVO AMIN'NY TONDRA-DRANO (APIPA)</div>
+                <div class="italic" style="margin-bottom: 2px;">DIRECTION GÉNÉRALE</div>
+                <div class="italic" style="margin-bottom: 2px;">DE L'AUTORITÉ DE PROTECTION DES PLAINES</div>
+                <div class="italic" style="margin-bottom: 2px;">D'ANTANANARIVO CONTRE LES INONDATIONS (APIPA)</div>
               </div>
              
               <div class="right-column">
-                <div style="margin-bottom: 3px;">Antananarivo, ny ${preparedData.currentDate}</div>
-                <div style="margin-bottom: 3px;">Ny Tale Jeneraly</div>
-                <div style="margin-bottom: 3px;">Ho an'ny</div>
+                <div style="margin-bottom: 3px;">Antananarivo, le ${preparedData.currentDate}</div>
+                <div style="margin-bottom: 3px;">À Monsieur le Directeur Général</div>
+                <div style="margin-bottom: 3px;">Pour être remis à</div>
                 <div class="bold">Monsieur ${preparedData.nomComplet}</div>
               </div>
             </div>
            
             <!-- Numéro d'avis -->
             <div class="title-section">
-              Fitanana an-Tsoratra faha <span class="underline">${preparedData.referenceFT}</span>
+              Procès-Verbal N° <span class="underline">${preparedData.referenceFT}</span>
             </div>
            
             <!-- Informations de titre -->
             <div class="info-section">
               <div style="font-weight: 600; margin-bottom: 3px;">
-                Antony: <span style="font-weight: 100;">Fitaterana rano-tany</span>
+                Objet: <span style="font-weight: 100;">Remblaiement de terrain</span>
               </div>
               <div style="font-weight: 600; margin-bottom: 3px;">
-                Daty: <span style="font-weight: 100;">${preparedData.dateDescente}</span>
+                Date: <span style="font-weight: 100;">${preparedData.dateDescente}</span>
               </div>
               <div style="font-weight: 600; margin-bottom: 3px;">
-                Toerana: <span style="font-weight: 100;">Biraon'ny APIPA Anosizato Antsinanana</span>
+                Lieu: <span style="font-weight: 100;">Bureau de l'APIPA Anosizato Antsinanana</span>
               </div>
               <div style="font-weight: 600; margin-bottom: 10px;">
-                Tanjona: <span style="font-weight: 100;">Fampanarahandalana</span>
+                Objet: <span style="font-weight: 100;">Constatation</span>
               </div>
               <div class="separator"></div>
             </div>
@@ -580,98 +582,90 @@ const FaireFTModal: React.FC<FaireFTModalProps> = ({
             <div class="content">
               <!-- Premier paragraphe -->
               <div class="paragraph">
-                Araka ny fepetra ao amin'ny <span class="italic">Dekri governemantaly n°2019-1543 ny 11 Septambra 2019</span>
-                momba ny fandaminana ny asa fananganana tany feno ao amin'ireo faritra fehezin'ny APIPA,
-                ary mampiasa ny <span class="italic">lalàna n°2015-052 ny 03 Febroary 2016</span> mikasika ny Fandrindrana ny Tanibe sy ny Fonènana ;
+                Conformément aux dispositions du <span class="italic">Décret gouvernemental n°2019-1543 du 11 Septembre 2019</span>
+                relatif à l'organisation des travaux de remblaiement dans les zones relevant de la compétence de l'APIPA,
+                et en application de la <span class="italic">loi n°2015-052 du 03 Février 2016</span> relative à l'Aménagement du Territoire et de l'Urbanisme ;
               </div>
              
               <!-- Deuxième paragraphe -->
               <div class="paragraph">
-                Arak'ireo baiko nomen'ny Tale Jeneralin'ny APIPA, nisy fitsidina teo amin'ny toerana natao
-                tamin'ny <span class="bold">${preparedData.dateDescente}</span> amin'ny <span class="bold">${preparedData.heureDescente}</span>,
-                teo amin'ny <span class="bold">${preparedData.commune}</span>, Fokontany <span class="bold">${preparedData.fokontany}</span>,
-                Toerana <span class="bold">${preparedData.localite}</span>. Ny tany voamarika amin'ny laharana
-                <span class="bold"> ${preparedData.titreTerrain}</span>, an'ny
+                Suite aux instructions données par le Directeur Général de l'APIPA, une descente a été effectuée sur le site concerné
+                le <span class="bold">${preparedData.dateDescente}</span> à <span class="bold">${preparedData.heureDescente}</span>,
+                dans la commune de <span class="bold">${preparedData.commune}</span>, Fokontany <span class="bold">${preparedData.fokontany}</span>,
+                Localité <span class="bold">${preparedData.localite}</span>. Le terrain identifié sous le numéro
+                <span class="bold"> ${preparedData.titreTerrain}</span>, appartenant à
                 <span class="bold"> ${preparedData.nomproprietaire}</span>,
-                amin'ny koordinà <span class="bold">${preparedData.coordX}</span> ; <span class="bold">${preparedData.coordY}</span>
-                velarana <span class="bold">${preparedData.superficie}</span>.
+                aux coordonnées <span class="bold">${preparedData.coordX}</span> ; <span class="bold">${preparedData.coordY}</span>
+                d'une superficie de <span class="bold">${preparedData.superficie}</span>.
               </div>
              
               <!-- Troisième paragraphe -->
               <div class="paragraph">
-                Hita fa misy <span class="bold">${preparedData.infraction}</span> eo amin'io tany io,
-                izay niteraka ny fandraiketana ny <span class="bold">${preparedData.action}</span>.
+                Il a été constaté qu'il y a <span class="bold">${preparedData.infraction}</span> sur ledit terrain,
+                ce qui a entraîné la constatation de <span class="bold">${preparedData.action}</span>.
               </div>
              
               <!-- Quatrième paragraphe -->
               <div class="paragraph">
-                Antsoina ianao hankany amin'ny biraon'ny APIPA ny <span class="bold">${preparedData.formattedDateFT}</span>
-                amin'ny <span class="bold">${preparedData.formattedHeureFT}</span> ho <span class="bold">${preparedData.typeConvoquee}</span>,
-                <span class="bold"> ${preparedData.nomComplet}</span>, manana CIN n°
-                <span class="bold"> ${preparedData.cin}</span>, azo antsoina amin'ny <span class="bold">${preparedData.contact}</span>.
+                Vous êtes convoqué au bureau de l'APIPA le <span class="bold">${preparedData.formattedDateFT}</span>
+                à <span class="bold">${preparedData.formattedHeureFT}</span> en qualité de <span class="bold">${preparedData.typeConvoquee}</span>,
+                <span class="bold"> ${preparedData.nomComplet}</span>, titulaire de la CIN n°
+                <span class="bold"> ${preparedData.cin}</span>, joignable au <span class="bold">${preparedData.contact}</span>.
               </div>
              
               <!-- Documents apportés -->
               <div style="margin-bottom: 15px;">
-                <div class="bold" style="margin-bottom: 5px;">Taratasy naterina :</div>
+                <div class="bold" style="margin-bottom: 5px;">Documents fournis :</div>
                 <ul class="document-list">
                   ${preparedData.dossierType && preparedData.dossierType.length > 0
                     ? preparedData.dossierType.map(doc => `<li>— ${doc}</li>`).join('')
-                    : '<li>— Tsy misy taratasy nentena</li>'
+                    : '<li>— Aucun document fourni</li>'
                   }
                 </ul>
               </div>
              
               <!-- Documents manquants -->
               <div style="margin-bottom: 15px;">
-                <div class="bold" style="margin-bottom: 5px;">Taratasy tsy ampy tokony hotaterina :</div>
+                <div class="bold" style="margin-bottom: 5px;">Documents manquants à fournir :</div>
                 <ul class="document-list">
                   ${preparedData.missingDossiers && preparedData.missingDossiers.length > 0
                     ? preparedData.missingDossiers.map(doc => `<li>— ${doc}</li>`).join('')
-                    : '<li>— Tsy misy taratasy tsy ampy</li>'
+                    : '<li>— Aucun document manquant</li>'
                   }
                 </ul>
                 ${preparedData.deadline ? `
                   <div class="bold" style="margin-top: 10px;">
-                    Daty farany fametrahana : <span class="underline">${formatDeadlineFR(preparedData.deadline)}</span>
+                    Date limite de dépôt : <span class="underline">${formatDeadlineFR(preparedData.deadline)}</span>
                   </div>
                 ` : ''}
               </div>
              
-              <!-- Mesures requises -->
-              <div style="margin-bottom: 15px;">
-                <div class="bold" style="margin-bottom: 5px;">Fepetra takin'ny APIPA :</div>
-                <div class="paragraph" style="margin-bottom: 10px;">
-                  ${preparedData.mesure}
-                </div>
-              </div>
-             
               <!-- Avertissement -->
               <div class="paragraph">
-                Tena ilaina ny manaraka ny fepetra rehetra voalaza etsy ambony. Ny tsy fanarahana, na ampahany aza,
-                ho heverina ho tsy fanarahana lalàna ary mety hitarika ny fanenjehana ara-pitsarana avy amin'ny fahefana manan-draharaha.
+                Il est impératif de respecter l'ensemble des mesures mentionnées ci-dessus. Le non-respect, même partiel,
+                sera considéré comme une infraction et pourra entraîner des poursuites judiciaires de la part des autorités compétentes.
               </div>
              
               <!-- Conclusion -->
               <div class="paragraph" style="margin-bottom: 20px;">
-                Mba hanamafisana ny fahafantarana ity fanambarana ity sy ny fanolorana tena hanaraka ny fepetrin'ny APIPA,
-                azafady sonia ity taratasy ity amin'ny dika roa.
+                Pour attester de la prise de connaissance de la présente notification et de votre engagement à respecter les prescriptions de l'APIPA,
+                veuillez signer le présent document en deux exemplaires.
               </div>
             </div>
            
             <!-- Sections de signature -->
             <div class="signature-section">
               <div>
-                <div class="bold" style="margin-bottom: 20px;">Vakina sy ekena,</div>
+                <div class="bold" style="margin-bottom: 20px;">Lu et approuvé,</div>
                 <div class="signature-box">
-                  <div class="signature-text">Sonin'ny mpandray</div>
+                  <div class="signature-text">Signature du destinataire</div>
                 </div>
               </div>
               <div style="text-align: right;">
-                <div class="bold" style="margin-bottom: 5px;">Antananarivo, ny ${preparedData.currentDate}</div>
-                <div class="italic" style="margin-bottom: 20px;">Ny Tale Jeneralin'ny APIPA</div>
+                <div class="bold" style="margin-bottom: 5px;">Antananarivo, le ${preparedData.currentDate}</div>
+                <div class="italic" style="margin-bottom: 20px;">Le Directeur Général de l'APIPA</div>
                 <div class="signature-box">
-                  <div class="signature-text">Sonia sy tombo-kase</div>
+                  <div class="signature-text">Signature et cachet</div>
                 </div>
               </div>
             </div>

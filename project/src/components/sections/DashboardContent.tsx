@@ -23,34 +23,34 @@ export default function DashboardContent() {
     { 
       key: 'descente',
       label: 'Descentes réalisées', 
-      value: '156', 
+      value: 'Ds', 
       icon: Search, 
       color: 'from-blue-500 to-cyan-500', 
-      change: '+12' 
+      change: '+' 
     },
     { 
       key: 'ft',
-      label: 'Fiches techniques', 
-      value: '89', 
+      label: 'Fitanana an-Tsoratra', 
+      value: 'FT', 
       icon: ClipboardCheck, 
       color: 'from-emerald-500 to-green-500', 
-      change: '+8' 
+      change: '+' 
     },
     { 
       key: 'avis',
       label: 'Avis de paiement', 
-      value: '42', 
+      value: 'AP', 
       icon: Receipt, 
       color: 'from-violet-500 to-purple-500', 
-      change: '+5' 
+      change: '+' 
     },
     { 
       key: 'paiement',
       label: 'Paiements validés', 
-      value: '38', 
+      value: 'Paiements', 
       icon: DollarSign, 
       color: 'from-amber-500 to-orange-500', 
-      change: '+6' 
+      change: '+' 
     },
   ];
 

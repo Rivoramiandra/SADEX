@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.2",
     "@supabase/supabase-js": "^2.57.4",
     "@types/leaflet": "^1.9.21",
     "@types/leaflet-draw": "^1.0.13",
@@ -18,6 +19,8 @@
     "chart.js": "^4.5.1",
     "date-fns": "^4.1.0",
     "html2pdf.js": "^0.12.1",
+    "jspdf": "^3.0.4",
+    "jspdf-autotable": "^5.0.2",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "leaflet.zoomhome": "^1.0.0",

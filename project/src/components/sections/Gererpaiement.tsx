@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 import Completerpaiement from './Completerpaiement';
 import PaiementContent from './PaiementContent';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
 function Gererpaiement() {
   const [paiements, setPaiements] = useState([]);
   const [paiementsComplets, setPaiementsComplets] = useState([]);
@@ -46,6 +47,7 @@ function Gererpaiement() {
   const [showCompleterModal, setShowCompleterModal] = useState(false);
   const [paiementToComplete, setPaiementToComplete] = useState(null);
   const API_BASE_URL = 'http://localhost:3000/api';
+
   // Récupérer la liste des paiements
   const fetchPaiements = useCallback(async () => {
     try {
@@ -133,6 +135,7 @@ function Gererpaiement() {
       setLoading(false);
     }
   }, [pageSize]);
+
   // Récupérer les statistiques
   const fetchStats = useCallback(async () => {
     try {
@@ -156,15 +159,18 @@ function Gererpaiement() {
       console.error('❌ Erreur lors du chargement des statistiques:', error);
     }
   }, []);
+
   // Initial fetch
   useEffect(() => {
     fetchPaiements();
   }, [fetchPaiements]);
+
   useEffect(() => {
     if (paiements.length > 0) {
       fetchStats();
     }
   }, [paiements, fetchStats]);
+
   // Calculer le pourcentage payé pour un paiement partiel
   const calculatePourcentagePaye = (paiement) => {
     if (!paiement) return 0;
@@ -179,6 +185,7 @@ function Gererpaiement() {
    
     return 0;
   };
+
   // Calculer les informations de tranches
   const getTranchesInfo = (paiement) => {
     const nombreTranche = paiement.nombre_tranche || 1;
@@ -192,6 +199,7 @@ function Gererpaiement() {
       progres: nombreTranche > 1 ? Math.round((numeroTranche / nombreTranche) * 100) : 100
     };
   };
+
   // Filtrer les paiements complets
   const filteredPaiementsComplets = paiementsComplets.filter(paiement => {
     const searchLower = searchTerm.toLowerCase();
@@ -205,6 +213,7 @@ function Gererpaiement() {
       (paiement.nom_convoquee && paiement.nom_convoquee.toLowerCase().includes(searchLower)) ||
       `#${paiement.idpaiement}`.includes(searchLower);
   });
+
   // Filtrer les paiements partiels
   const filteredPaiementsPartiels = paiementsPartiels.filter(paiement => {
     const searchLower = searchTermPartiel.toLowerCase();
@@ -218,6 +227,7 @@ function Gererpaiement() {
       (paiement.nom_convoquee && paiement.nom_convoquee.toLowerCase().includes(searchLower)) ||
       `#${paiement.idpaiement}`.includes(searchLower);
   });
+
   // Formater les dates
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -232,11 +242,13 @@ function Gererpaiement() {
       return dateString;
     }
   };
+
   // Formater les montants
   const formatMontant = (montant) => {
     if (montant === null || montant === undefined) return '0';
     return new Intl.NumberFormat('fr-FR').format(montant);
   };
+
   // Icône pour le mode de paiement
   const getModeIcon = (mode) => {
     switch (mode?.toLowerCase()) {
@@ -255,6 +267,7 @@ function Gererpaiement() {
         return <DollarSign className="w-4 h-4" />;
     }
   };
+
   // Couleur pour le statut
   const getStatutColor = (statut) => {
     const statutLower = statut?.toLowerCase();
@@ -270,6 +283,7 @@ function Gererpaiement() {
       return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
+
   // Icône pour le statut
   const getStatutIcon = (statut) => {
     const statutLower = statut?.toLowerCase();
@@ -285,55 +299,149 @@ function Gererpaiement() {
       return <AlertCircle className="w-4 h-4 text-slate-600" />;
     }
   };
+
+  // Fonction pour montrer la confirmation de suppression avec toast
+  const showDeleteConfirmation = (paiementId, reference) => {
+    const toastId = toast(
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-red-100 rounded-full">
+            <Trash2 className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900 mb-1">Confirmer la suppression</h3>
+            <p className="text-sm text-slate-600 mb-3">
+              Êtes-vous sûr de vouloir supprimer le paiement #{paiementId} ({reference}) ?
+              Cette action est irréversible.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  toast.dismiss(toastId);
+                  toast.info('Suppression annulée', {
+                    position: "top-right",
+                    autoClose: 3000,
+                  });
+                }}
+                className="px-3 py-1.5 text-sm border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={async () => {
+                  toast.dismiss(toastId);
+                  await handleDeletePaiement(paiementId);
+                }}
+                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      {
+        position: "top-right",
+        autoClose: false,
+        closeOnClick: false,
+        draggable: false,
+        closeButton: false,
+        style: {
+          width: '400px',
+          padding: '0',
+          borderRadius: '12px',
+        }
+      }
+    );
+  };
+
   // Supprimer un paiement
-  const handleDeletePaiement = async () => {
-    if (!paiementToDelete) return;
+  const handleDeletePaiement = async (paiementId) => {
+    if (!paiementId) return;
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/paiements/${paiementToDelete}`, {
+      const response = await fetch(`${API_BASE_URL}/paiements/${paiementId}`, {
         method: 'DELETE',
       });
       const result = await response.json();
      
       if (response.ok && result.success) {
-        alert('✅ Paiement supprimé avec succès!');
-        setShowDeleteModal(false);
-        setPaiementToDelete(null);
+        toast.success('✅ Paiement supprimé avec succès!', {
+          position: "top-right",
+          autoClose: 3000,
+        });
         fetchPaiements();
       } else {
         throw new Error(result.message || 'Erreur lors de la suppression');
       }
     } catch (error) {
-      alert(`❌ Erreur: ${error.message}`);
+      toast.error(`❌ Erreur: ${error.message}`, {
+        position: "top-right",
+        autoClose: 4000,
+      });
     }
   };
-  // Réinitialiser les filtres
+
+  // Réinitialiser les filtres avec toast
   const resetFiltres = () => {
     setSearchTerm('');
     setSearchTermPartiel('');
     setFiltreStatut('tous');
     setPage(1);
     setPagePartiel(1);
+    
+    toast.info('Filtres réinitialisés', {
+      position: "top-right",
+      autoClose: 2000,
+    });
   };
+
   // Ouvrir modal pour compléter paiement
   const handleCompleterPaiement = (paiement) => {
     console.log('📋 Paiement à compléter:', paiement);
     setPaiementToComplete(paiement);
     setShowCompleterModal(true);
   };
+
   // Fermer modal et rafraîchir
   const handleCloseCompleterModal = () => {
     setShowCompleterModal(false);
     setPaiementToComplete(null);
     fetchPaiements();
   };
+
   // Calculer les indices affichés
   const startIndex = (page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, filteredPaiementsComplets.length);
  
   const startIndexPartiel = (pagePartiel - 1) * pageSize;
   const endIndexPartiel = Math.min(startIndexPartiel + pageSize, filteredPaiementsPartiels.length);
+
+  // Fonction pour actualiser avec feedback toast
+  const handleRefresh = () => {
+    toast.info('Actualisation en cours...', {
+      position: "top-right",
+      autoClose: 1000,
+    });
+    fetchPaiements();
+  };
+
   return (
     <div className="space-y-6 p-6">
+      {/* Toast Container */}
+      <ToastContainer 
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
+      
       {/* En-tête */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -355,6 +463,7 @@ function Gererpaiement() {
           </div>
         </div>
       </div>
+      
       {/* Cartes de statistiques */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6">
@@ -410,7 +519,9 @@ function Gererpaiement() {
           </div>
         </div>
       </div>
- <PaiementContent/>
+      
+      <PaiementContent/>
+      
       {/* Contrôles généraux */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-col md:flex-row justify-between gap-4 mb-6">
@@ -428,9 +539,7 @@ function Gererpaiement() {
             {/* Bouton actualiser */}
             <button
               className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-              onClick={() => {
-                fetchPaiements();
-              }}
+              onClick={handleRefresh}
             >
               <RefreshCw className="w-4 h-4" />
               Actualiser
@@ -438,7 +547,7 @@ function Gererpaiement() {
           </div>
         </div>
       
-        {/* Tableau des paiements partiels - AMELIORE */}
+        {/* Tableau des paiements partiels */}
         <div className="mb-12">
           <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
             <Clock className="w-5 h-5 text-blue-600" />
@@ -475,7 +584,13 @@ function Gererpaiement() {
                 <p className="text-red-700 font-medium">Erreur: {error}</p>
               </div>
               <button
-                onClick={fetchPaiements}
+                onClick={() => {
+                  toast.info('Rechargement en cours...', {
+                    position: "top-right",
+                    autoClose: 1000,
+                  });
+                  fetchPaiements();
+                }}
                 className="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
               >
                 Réessayer
@@ -627,8 +742,10 @@ function Gererpaiement() {
                              
                               <button
                                 onClick={() => {
-                                  setPaiementToDelete(paiement.idpaiement);
-                                  setShowDeleteModal(true);
+                                  showDeleteConfirmation(
+                                    paiement.idpaiement,
+                                    paiement.num_ap || paiement.reference || `Paiement #${paiement.idpaiement}`
+                                  );
                                 }}
                                 className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
                                 title="Supprimer"
@@ -696,6 +813,7 @@ function Gererpaiement() {
             </>
           )}
         </div>
+        
         {/* Tableau des paiements complets */}
         <div>
           <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
@@ -829,8 +947,10 @@ function Gererpaiement() {
                              
                               <button
                                 onClick={() => {
-                                  setPaiementToDelete(paiement.idpaiement);
-                                  setShowDeleteModal(true);
+                                  showDeleteConfirmation(
+                                    paiement.idpaiement,
+                                    paiement.num_ap || paiement.reference || `Paiement #${paiement.idpaiement}`
+                                  );
                                 }}
                                 className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
                                 title="Supprimer"
@@ -899,6 +1019,7 @@ function Gererpaiement() {
           )}
         </div>
       </div>
+      
       {/* Modal pour compléter paiement */}
       {showCompleterModal && paiementToComplete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -932,6 +1053,7 @@ function Gererpaiement() {
           </div>
         </div>
       )}
+      
       {/* Modal de détails du paiement */}
       {showDetailsModal && selectedPaiement && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1015,6 +1137,7 @@ function Gererpaiement() {
                   </dl>
                 </div>
               </div>
+              
               {/* Informations des tranches */}
               {(selectedPaiement.nombre_tranche && selectedPaiement.nombre_tranche > 1) && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
@@ -1041,6 +1164,7 @@ function Gererpaiement() {
                   </div>
                 </div>
               )}
+              
               {/* Métadonnées */}
               <div className="bg-slate-50 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Informations supplémentaires</h3>
@@ -1069,6 +1193,7 @@ function Gererpaiement() {
                   </div>
                 </div>
               </div>
+              
               {/* Barre de progression */}
               <div className="bg-white border border-slate-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Progression du Paiement</h3>
@@ -1119,45 +1244,8 @@ function Gererpaiement() {
           </div>
         </div>
       )}
-      {/* Modal de confirmation de suppression */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-100 rounded-full">
-                  <Trash2 className="w-6 h-6 text-red-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900">Confirmer la suppression</h3>
-              </div>
-             
-              <p className="text-slate-600 mb-6">
-                Êtes-vous sûr de vouloir supprimer ce paiement ? Cette action est irréversible.
-              </p>
-             
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setPaiementToDelete(null);
-                  }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleDeletePaiement}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Supprimer
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      <ToastContainer />
     </div>
   );
 }
+
 export default Gererpaiement;

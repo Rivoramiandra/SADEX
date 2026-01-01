@@ -71,9 +71,11 @@ interface ReverseGeocodeResult {
     state?: string;
   };
 }
-// Définition des systèmes de coordonnées
-const lambertMadagascar = '+proj=lcc +lat_1=-18.9 +lat_2=-18.9 +lat_0=-18.9 +lon_0=46.43722916666667 +x_0=400000 +y_0=800000 +ellps=intl +towgs84=-189,-242,-91,0,0,0,0 +units=m +no_defs';
+// Définition des systèmes de coordonnées alignée avec le PHP (utilisation de omerc pour EPSG:8441)
+const lambertMadagascar = '+proj=omerc +lat_0=-18.9 +lonc=46.43722916666667 +alpha=18.9 +k=0.9995 +x_0=400000 +y_0=800000 +ellps=intl +towgs84=-189,-242,-91,0,0,0,0 +units=m +no_defs';
 const wgs84 = '+proj=longlat +datum=WGS84 +no_defs';
+// Configuration proj4 pour EPSG:8441 comme dans le PHP
+proj4.defs("EPSG:8441", lambertMadagascar);
 // Conversion Lambert (x, y) → WGS84 (lng, lat)
 const convertLambertToWGS84 = (x: number, y: number): { lat: number, lng: number } => {
   try {
@@ -156,7 +158,6 @@ export default function FormulaireDescente({
     polygon_points: [],
     geometry_type: 'polygon'
   });
- 
   const [fokontanyData, setFokontanyData] = useState<FokontanyData[]>([]);
   const [filteredFokontany, setFilteredFokontany] = useState<FokontanyData[]>([]);
   const [showFokontanyDropdown, setShowFokontanyDropdown] = useState(false);
@@ -166,7 +167,6 @@ export default function FormulaireDescente({
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [polygonLayer, setPolygonLayer] = useState<L.Polygon | null>(null);
   const [coordMarker, setCoordMarker] = useState<L.Marker | null>(null);
- 
   const [searchingByCoords, setSearchingByCoords] = useState(false);
   const [lastSearchedCoords, setLastSearchedCoords] = useState<{x: number | undefined, y: number | undefined}>({
     x: initialData?.x_coord,
@@ -192,7 +192,7 @@ export default function FormulaireDescente({
         const data: FokontanyData[] = await response.json();
         setFokontanyData(data);
         setFilteredFokontany(data);
-       
+      
         if (initialData?.fokontany) {
           const fokontanyInfo = data.find(item => item.fkt === initialData.fokontany);
           if (fokontanyInfo) {
@@ -205,11 +205,11 @@ export default function FormulaireDescente({
             setSearchTerm(fokontanyInfo.fkt);
           }
         }
-       
+      
         if (initialData?.polygon_points) {
           setPolygonPoints(initialData.polygon_points);
         }
-       
+      
         // Rechercher le fokontany si des coordonnées initiales existent
         if (initialData?.x_coord && initialData?.y_coord) {
           searchFokontanyByCoordinates(initialData.x_coord, initialData.y_coord);
@@ -220,7 +220,7 @@ export default function FormulaireDescente({
         setIsLoading(false);
       }
     };
-   
+  
     fetchFokontanyData();
   }, [initialData]);
   useEffect(() => {
@@ -238,7 +238,7 @@ export default function FormulaireDescente({
   const reverseGeocodeWithOSM = useCallback(async (lat: number, lng: number): Promise<string> => {
     try {
       setReverseGeocoding(true);
-     
+    
       // Utiliser le service Nominatim d'OpenStreetMap
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
@@ -249,15 +249,15 @@ export default function FormulaireDescente({
           }
         }
       );
-     
+    
       if (!response.ok) {
         throw new Error('Erreur de géocodage inverse');
       }
-     
+    
       const data: ReverseGeocodeResult = await response.json();
-     
+    
       let locationDescription = '';
-     
+    
       if (data.display_name) {
         locationDescription = data.display_name;
       } else if (data.address) {
@@ -272,10 +272,10 @@ export default function FormulaireDescente({
           address.municipality,
           address.state
         ].filter(Boolean);
-       
+      
         locationDescription = parts.join(', ');
       }
-     
+    
       return locationDescription || 'Adresse non spécifiée';
     } catch (error) {
       console.error('Erreur de géocodage inverse:', error);
@@ -290,33 +290,33 @@ export default function FormulaireDescente({
     if (lastSearchedCoords.x === x && lastSearchedCoords.y === y) {
       return;
     }
-   
+  
     // Vérifier que les coordonnées sont valides
     if (!x || !y || x <= 0 || y <= 0) {
       return;
     }
-   
+  
     try {
       setSearchingByCoords(true);
       setLastSearchedCoords({ x, y });
-     
+    
       // DEBUG: Log des coordonnées envoyées
       console.log('Recherche fokontany avec coordonnées:', { x, y });
-     
+    
       // Appel à l'API avec les coordonnées
       const response = await fetch(
         `http://localhost:3000/api/fokontany?x=${x}&y=${y}`
       );
-     
+    
       if (!response.ok) {
         throw new Error('Erreur lors de la recherche par coordonnées');
       }
-     
+    
       const result = await response.json();
-     
+    
       // DEBUG: Log du résultat
       console.log('Résultat de recherche:', result);
-     
+    
       if (result.success && result.data) {
         // Mettre à jour les champs du formulaire
         setFormData(prev => ({
@@ -325,24 +325,24 @@ export default function FormulaireDescente({
           commune: result.data.commune,
           district: result.data.district
         }));
-       
+      
         // Mettre à jour le champ de recherche
         setSearchTerm(result.data.fokontany);
-       
+      
         // Convertir les coordonnées INPUT pour afficher sur la carte
         const coords = convertLambertToWGS84(x, y);
-       
+      
         // Centrer la carte sur les coordonnées INPUT
         if (mapRef.current) {
           mapRef.current.setView([coords.lat, coords.lng], 16);
         }
-       
+      
         // Ajouter/Mettre à jour le marqueur pour les coordonnées INPUT
         updateCoordMarker(coords.lat, coords.lng, 'Point de référence');
-       
+      
         // Géocodage inverse pour obtenir l'adresse basée sur INPUT
         const locationDescription = await reverseGeocodeWithOSM(coords.lat, coords.lng);
-       
+      
         // Mettre à jour la description de localisation
         if (locationDescription) {
           setFormData(prev => ({
@@ -350,7 +350,7 @@ export default function FormulaireDescente({
             localisation: locationDescription
           }));
         }
-       
+      
         // Gérer le centre du fokontany si disponible (ajouter un marqueur, mais ne pas centrer)
         if (result.data.centre_lambert) {
           try {
@@ -359,16 +359,16 @@ export default function FormulaireDescente({
             if (match && match.length === 3) {
               const centreX = parseFloat(match[1]);
               const centreY = parseFloat(match[2]);
-             
+            
               // DEBUG: Log des coordonnées du centre
               console.log('Coordonnées centre extraites:', { centreX, centreY });
-             
+            
               // Convertir en WGS84
               const centreCoords = convertLambertToWGS84(centreX, centreY);
-             
+            
               // DEBUG: Log des coordonnées converties
               console.log('Coordonnées centre converties WGS84:', centreCoords);
-             
+            
               // Ajouter un marqueur pour le centre du fokontany (sans centrer la carte)
               if (mapRef.current) {
                 const centerIcon = L.divIcon({
@@ -386,7 +386,7 @@ export default function FormulaireDescente({
                   iconSize: [20, 20],
                   iconAnchor: [10, 10]
                 });
-               
+              
                 L.marker([centreCoords.lat, centreCoords.lng], { icon: centerIcon })
                   .addTo(mapRef.current)
                   .bindPopup(`Centre du Fokontany: ${result.data.fokontany}`);
@@ -421,7 +421,7 @@ export default function FormulaireDescente({
       ...formData,
       [name]: numericValue
     };
-   
+  
     setFormData(newFormData);
     // Si x_coord ou y_coord changent, mettre à jour la carte ET rechercher le fokontany
     if (name === 'x_coord' || name === 'y_coord') {
@@ -429,11 +429,11 @@ export default function FormulaireDescente({
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
-     
+    
       // Mettre à jour la carte immédiatement
       if (newFormData.x_coord && newFormData.y_coord) {
         updateMapFromCoordinates();
-       
+      
         // Rechercher automatiquement le fokontany (avec un délai pour éviter trop de requêtes)
         searchTimeoutRef.current = setTimeout(() => {
           if (newFormData.x_coord && newFormData.y_coord) {
@@ -449,9 +449,9 @@ export default function FormulaireDescente({
       const latlngs = layer.getLatLngs();
       if (Array.isArray(latlngs) && latlngs.length > 0) {
         const points: PolygonPoint[] = [];
-       
+      
         const mainRing = latlngs[0] as L.LatLng[];
-       
+      
         mainRing.forEach((point: L.LatLng, index: number) => {
           const lambertCoords = convertWGS84ToLambert(point.lng, point.lat);
           points.push({
@@ -462,7 +462,7 @@ export default function FormulaireDescente({
             order: index + 1
           });
         });
-       
+      
         setPolygonPoints(points);
         setFormData(prev => ({
           ...prev,
@@ -477,7 +477,7 @@ export default function FormulaireDescente({
     if (!mapRef.current) return;
     // Supprimer l'ancien marqueur s'il existe
     markerLayerRef.current.clearLayers();
-   
+  
     // Créer une icône personnalisée pour le point
     const pointIcon = L.divIcon({
       html: `
@@ -505,7 +505,7 @@ export default function FormulaireDescente({
       iconSize: [24, 24],
       iconAnchor: [12, 12]
     });
-   
+  
     // Créer le marqueur
     const marker = L.marker([lat, lng], {
       icon: pointIcon,
@@ -517,30 +517,30 @@ export default function FormulaireDescente({
       <div>Lng: ${lng.toFixed(6)}</div>
       <div style="font-size: 11px; color: #666; margin-top: 4px;">Glissez pour ajuster</div>
     `);
-   
+  
     // Ajouter au layer de marqueurs
     marker.addTo(markerLayerRef.current);
-   
+  
     // Gérer le drag du marqueur
     marker.on('dragend', async (e: L.LeafletEvent) => {
       const marker = e.target as L.Marker;
       const position = marker.getLatLng();
-     
+    
       // Mettre à jour les coordonnées Lambert
       const lambertCoords = convertWGS84ToLambert(position.lng, position.lat);
-     
+    
       // Mettre à jour le formulaire
       setFormData(prev => ({
         ...prev,
         x_coord: lambertCoords.x,
         y_coord: lambertCoords.y
       }));
-     
+    
       // Rechercher le fokontany pour les nouvelles coordonnées
       if (lambertCoords.x && lambertCoords.y) {
         await searchFokontanyByCoordinates(lambertCoords.x, lambertCoords.y);
       }
-     
+    
       // Géocodage inverse pour l'adresse
       const locationDescription = await reverseGeocodeWithOSM(position.lat, position.lng);
       if (locationDescription) {
@@ -550,7 +550,7 @@ export default function FormulaireDescente({
         }));
       }
     });
-   
+  
     setCoordMarker(marker);
   };
   // Mettre à jour la carte à partir des coordonnées x_coord, y_coord
@@ -558,13 +558,13 @@ export default function FormulaireDescente({
     if (!mapRef.current || !formData.x_coord || !formData.y_coord) return;
     try {
       const coords = convertLambertToWGS84(formData.x_coord, formData.y_coord);
-     
+    
       // Centrer la carte sur la nouvelle position
       mapRef.current.setView([coords.lat, coords.lng], 16);
-     
+    
       // Ajouter/mettre à jour le marqueur de coordonnées
       updateCoordMarker(coords.lat, coords.lng, 'Point de référence des coordonnées');
-     
+    
       // Mettre à jour le formulaire
       setFormData(prev => ({
         ...prev,
@@ -574,7 +574,7 @@ export default function FormulaireDescente({
         },
         geometry_type: 'polygon'
       }));
-     
+    
     } catch (error) {
       console.error('Erreur lors de la mise à jour de la carte:', error);
     }
@@ -583,13 +583,13 @@ export default function FormulaireDescente({
     setFormData(prev => {
       const currentArray = (prev[name] as string[]) || [];
       let newArray: string[];
-     
+    
       if (checked) {
         newArray = [...currentArray, value];
       } else {
         newArray = currentArray.filter(item => item !== value);
       }
-     
+    
       return {
         ...prev,
         [name]: newArray
@@ -599,7 +599,7 @@ export default function FormulaireDescente({
   // Recherche de fokontany
   const handleFokontanySearch = (value: string) => {
     setSearchTerm(value);
-   
+  
     if (value.trim() === '') {
       setFilteredFokontany(fokontanyData);
     } else {
@@ -619,45 +619,45 @@ export default function FormulaireDescente({
       commune: fokontany.firaisana,
       district: fokontany.distrika
     }));
-   
+  
     setSearchTerm(fokontany.fkt);
     setShowFokontanyDropdown(false);
-   
+  
     // Réinitialiser les coordonnées si on sélectionne manuellement un fokontany
     setFormData(prev => ({
       ...prev,
       x_coord: undefined,
       y_coord: undefined
     }));
-   
+  
     // Supprimer le marqueur de coordonnées
     markerLayerRef.current.clearLayers();
     setCoordMarker(null);
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-   
+  
     // Vérifier qu'un polygone a été tracé
     if (polygonPoints.length === 0) {
       alert('Veuillez tracer un polygone sur la carte avant de soumettre le formulaire.');
       return;
     }
-   
+  
     // Vérifier que le polygone a au moins 3 points
     if (polygonPoints.length < 3) {
       alert('Le polygone doit avoir au moins 3 points pour former une surface.');
       return;
     }
-   
+  
     // Vérifier que les coordonnées sont présentes
     if (!formData.x_coord || !formData.y_coord) {
       alert('Veuillez entrer des coordonnées valides.');
       return;
     }
-   
+  
     // Convertir les coordonnées avant soumission
     let finalData = { ...formData };
-   
+  
     // Si des coordonnées WGS84 sont présentes dans geom, les convertir en Lambert
     if (formData.geom && formData.geom.coordinates) {
       if (formData.geom.type === 'Point') {
@@ -667,11 +667,11 @@ export default function FormulaireDescente({
         finalData.y_coord = lambertCoords.y;
       }
     }
-   
+  
     // Ajouter les points du polygone
     finalData.polygon_points = polygonPoints;
     finalData.geometry_type = 'polygon';
-   
+  
     // Si pas de localisation, essayer de géocoder
     if (!finalData.localisation && finalData.x_coord && finalData.y_coord) {
       try {
@@ -684,7 +684,7 @@ export default function FormulaireDescente({
         console.error('Erreur lors du géocodage final:', error);
       }
     }
-   
+  
     onSubmit(finalData);
   };
   // Gérer la localisation
@@ -700,15 +700,15 @@ export default function FormulaireDescente({
   // Fonction pour afficher le polygone sur la carte
   const displayPolygonOnMap = (points: PolygonPoint[]) => {
     if (!mapRef.current || points.length < 3) return;
-   
+  
     // Créer les coordonnées LatLng pour le polygone
     const latlngs = points.map(point => L.latLng(point.latitude, point.longitude));
-   
+  
     // Supprimer l'ancien polygone s'il existe
     if (polygonLayer && mapRef.current.hasLayer(polygonLayer)) {
       mapRef.current.removeLayer(polygonLayer);
     }
-   
+  
     // Créer un nouveau polygone
     const newPolygon = L.polygon(latlngs, {
       color: '#3b82f6',
@@ -716,19 +716,19 @@ export default function FormulaireDescente({
       fillOpacity: 0.2,
       weight: 3
     });
-   
+  
     // Ajouter le polygone à la carte
     newPolygon.addTo(mapRef.current);
-   
+  
     // Centrer la carte sur le polygone
     mapRef.current.fitBounds(newPolygon.getBounds());
-   
+  
     // Stocker la référence
     setPolygonLayer(newPolygon);
-   
+  
     // Calculer la superficie
     const area = calculateGeodesicArea(latlngs);
-   
+  
     // Calculer le centroïde
     let sumLat = 0, sumLng = 0;
     latlngs.forEach(ll => {
@@ -738,12 +738,12 @@ export default function FormulaireDescente({
     const count = latlngs.length;
     const centroidLat = sumLat / count;
     const centroidLng = sumLng / count;
-   
+  
     const lambertCoords = convertWGS84ToLambert(centroidLng, centroidLat);
-   
+  
     // Ajouter le marqueur au centre du polygone
     updateCoordMarker(centroidLat, centroidLng, 'Centre du polygone');
-   
+  
     // Mettre à jour les données du formulaire
     setFormData(prev => ({
       ...prev,
@@ -766,7 +766,7 @@ export default function FormulaireDescente({
     });
     const satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
       attribution: 'Imagery © <a href="https://maps.google.com">Google Maps</a>',
-      maxZoom: 19
+      maxZoom: 22
     });
     satellite.addTo(mapRef.current);
     // Ajouter le contrôle des couches
@@ -806,7 +806,7 @@ export default function FormulaireDescente({
         remove: true
       }
     });
-   
+  
     // @ts-ignore
     mapRef.current.addControl(drawControl);
     // Gérer les événements de dessin
@@ -815,14 +815,14 @@ export default function FormulaireDescente({
       const type = e.layerType;
       // @ts-ignore
       const layer = e.layer;
-     
+    
       if (type === 'polygon') {
         drawnItemsRef.current.clearLayers();
         drawnItemsRef.current.addLayer(layer);
-       
+      
         const geojson = layer.toGeoJSON();
         const latlngs: L.LatLng[] = layer.getLatLngs()[0] as L.LatLng[];
-       
+      
         let sumLat = 0, sumLng = 0;
         latlngs.forEach((ll: L.LatLng) => {
           sumLat += ll.lat;
@@ -832,14 +832,14 @@ export default function FormulaireDescente({
         const centroidLat = sumLat / count;
         const centroidLng = sumLng / count;
         const area = calculateGeodesicArea(latlngs);
-       
+      
         const lambertCoords = convertWGS84ToLambert(centroidLng, centroidLat);
-       
+      
         extractPolygonPoints(layer);
-       
+      
         // Géocodage inverse pour l'adresse
         const locationDescription = await reverseGeocodeWithOSM(centroidLat, centroidLng);
-       
+      
         setFormData(prev => ({
           ...prev,
           geom: geojson.geometry,
@@ -849,12 +849,12 @@ export default function FormulaireDescente({
           geometry_type: 'polygon',
           localisation: locationDescription || prev.localisation
         }));
-       
+      
         // Rechercher le fokontany pour ces coordonnées
         if (lambertCoords.x && lambertCoords.y) {
           await searchFokontanyByCoordinates(lambertCoords.x, lambertCoords.y);
         }
-       
+      
         displayPolygonOnMap(polygonPoints);
       }
     });
@@ -864,7 +864,7 @@ export default function FormulaireDescente({
       setUserLocation(e.latlng);
       mapRef.current?.setView([lat, lng], 17);
       locationLayerRef.current.clearLayers();
-     
+    
       const locationIcon = L.divIcon({
         html: `
           <div style="
@@ -882,17 +882,17 @@ export default function FormulaireDescente({
         iconSize: [20, 20],
         iconAnchor: [10, 10]
       });
-     
+    
       const locationMarker = L.marker([lat, lng], { icon: locationIcon })
         .bindTooltip("📍 Votre position actuelle");
-     
+    
       locationLayerRef.current.addLayer(locationMarker);
-     
+    
       const lambertCoords = convertWGS84ToLambert(lng, lat);
-     
+    
       // Géocodage inverse pour l'adresse
       const locationDescription = await reverseGeocodeWithOSM(lat, lng);
-     
+    
       setFormData(prev => ({
         ...prev,
         x_coord: lambertCoords.x,
@@ -900,10 +900,10 @@ export default function FormulaireDescente({
         localisation: locationDescription || prev.localisation,
         geometry_type: 'polygon'
       }));
-     
+    
       // Ajouter le marqueur de coordonnées
       updateCoordMarker(lat, lng, 'Votre position');
-     
+    
       // Rechercher le fokontany pour cette position
       if (lambertCoords.x && lambertCoords.y) {
         await searchFokontanyByCoordinates(lambertCoords.x, lambertCoords.y);
@@ -973,7 +973,7 @@ export default function FormulaireDescente({
           extractPolygonPoints(layer);
           const latlngs: L.LatLng[] = layer.getLatLngs()[0] as L.LatLng[];
           const area = calculateGeodesicArea(latlngs);
-         
+        
           // Mettre à jour les coordonnées du centre
           let sumLat = 0, sumLng = 0;
           latlngs.forEach((ll: L.LatLng) => {
@@ -983,12 +983,12 @@ export default function FormulaireDescente({
           const count = latlngs.length;
           const centroidLat = sumLat / count;
           const centroidLng = sumLng / count;
-         
+        
           const lambertCoords = convertWGS84ToLambert(centroidLng, centroidLat);
-         
+        
           // Géocodage inverse pour l'adresse
           const locationDescription = await reverseGeocodeWithOSM(centroidLat, centroidLng);
-         
+        
           setFormData(prev => ({
             ...prev,
             superficie: Math.round(area),
@@ -996,15 +996,15 @@ export default function FormulaireDescente({
             y_coord: lambertCoords.y,
             localisation: locationDescription || prev.localisation
           }));
-         
+        
           // Mettre à jour le marqueur
           updateCoordMarker(centroidLat, centroidLng, 'Centre du polygone');
-         
+        
           // Rechercher le fokontany pour les nouvelles coordonnées
           if (lambertCoords.x && lambertCoords.y) {
             await searchFokontanyByCoordinates(lambertCoords.x, lambertCoords.y);
           }
-         
+        
           setPolygonLayer(layer as L.Polygon);
         }
       });
@@ -1013,13 +1013,13 @@ export default function FormulaireDescente({
     mapRef.current.on(L.Draw.Event.DELETED, (e: any) => {
       const layers = e.layers;
       let polygonDeleted = false;
-     
+    
       layers.eachLayer((layer: L.Layer) => {
         if (layer instanceof L.Polygon) {
           polygonDeleted = true;
         }
       });
-     
+    
       if (polygonDeleted) {
         setPolygonPoints([]);
         setFormData(prev => ({
@@ -1030,12 +1030,12 @@ export default function FormulaireDescente({
           x_coord: undefined,
           y_coord: undefined
         }));
-       
+      
         if (polygonLayer && mapRef.current && mapRef.current.hasLayer(polygonLayer)) {
           mapRef.current.removeLayer(polygonLayer);
           setPolygonLayer(null);
         }
-       
+      
         // Supprimer le marqueur de coordonnées
         markerLayerRef.current.clearLayers();
         setCoordMarker(null);
@@ -1067,7 +1067,7 @@ export default function FormulaireDescente({
     try {
       const coords = convertLambertToWGS84(formData.x_coord, formData.y_coord);
       const locationDescription = await reverseGeocodeWithOSM(coords.lat, coords.lng);
-     
+    
       if (locationDescription) {
         setFormData(prev => ({
           ...prev,
@@ -1095,7 +1095,7 @@ export default function FormulaireDescente({
           <X className="w-6 h-6" />
         </button>
       </div>
-     
+    
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* 🗓️ Date & Références */}
         <div className="form-section bg-white rounded-lg shadow-sm border border-slate-200 p-6">
@@ -1117,7 +1117,7 @@ export default function FormulaireDescente({
                 required
               />
             </div>
-           
+          
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Heure Descente
@@ -1203,7 +1203,7 @@ export default function FormulaireDescente({
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Référence
+                Référence O.M
               </label>
               <input
                 type="text"
@@ -1271,7 +1271,7 @@ export default function FormulaireDescente({
             <MapPin className="w-5 h-5" />
             Personne & Localisation
           </h5>
-         
+        
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1373,7 +1373,7 @@ export default function FormulaireDescente({
                     )}
                   </div>
                 </div>
-               
+              
                 {showFokontanyDropdown && filteredFokontany.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     <div className="p-2 border-b border-slate-200">
@@ -1407,7 +1407,7 @@ export default function FormulaireDescente({
                   </div>
                 )}
               </div>
-  
+ 
             </div>
           </div>
           {/* Coordonnées Lambert Madagascar */}
@@ -1438,9 +1438,8 @@ export default function FormulaireDescente({
                   </div>
                 )}
               </div>
-
             </div>
-           
+          
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Coordonnée Y (Lambert)
@@ -1467,7 +1466,6 @@ export default function FormulaireDescente({
                   </div>
                 )}
               </div>
-
             </div>
           </div>
           {/* District, Commune, Fokontany (auto-détectés) */}
@@ -1614,11 +1612,10 @@ export default function FormulaireDescente({
                 placeholder="Description de la localisation (remplie automatiquement par OSM)"
                 rows={3}
               />
-             
+            
             </div>
           </div>
           <div className="mt-6">
-
             <div className="flex flex-wrap gap-2 mb-4">
               <button
                 type="button"
@@ -1650,14 +1647,14 @@ export default function FormulaireDescente({
                 </button>
               )}
             </div>
-           
-           
+          
+          
             <div
               ref={mapContainerRef}
               id="map"
-              className="h-[400px] border border-slate-300 rounded-lg"
+              className="h-[600px] border border-slate-300 rounded-lg"
             />
-           
+          
             <div className="mt-3 space-y-2">
               {polygonPoints.length > 0 ? (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -1686,10 +1683,9 @@ export default function FormulaireDescente({
                     <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                     <span className="text-yellow-700 font-medium">⚠️ Aucun polygone tracé</span>
                   </div>
-
                 </div>
               )}
-             
+            
               {coordMarker && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
                   <div className="flex items-center gap-2 mb-1">
@@ -1698,7 +1694,7 @@ export default function FormulaireDescente({
                   </div>
                 </div>
               )}
-             
+            
               {userLocation && (
                 <div className="p-2 bg-blue-50 border border-blue-100 rounded-lg inline-block">
                   <div className="flex items-center gap-2">
@@ -1718,7 +1714,7 @@ export default function FormulaireDescente({
             <Clock className="w-5 h-5" />
             RDV & Pièces à fournir
           </h5>
-         
+        
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1732,7 +1728,7 @@ export default function FormulaireDescente({
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-           
+          
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Heure Rendez-vous
