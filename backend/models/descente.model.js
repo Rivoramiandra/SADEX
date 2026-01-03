@@ -585,7 +585,11 @@ export default {
         p.idavis AS paiement_idavis,
         p.montant AS paiement_montant,
         p.date_paiement AS paiement_date,
+        p.statut AS paiement_statut,
+        p.type_paiement AS paiement_type_paiement,
+        p.montant_reste AS paiement_montant_reste,
         p.statut AS paiement_statut
+
         
       FROM public."Descentes" d
       
@@ -702,6 +706,10 @@ export default {
           descente.details.paiement_montant = row.paiement_montant;
           descente.details.paiement_date = row.paiement_date;
           descente.details.paiement_statut = row.paiement_statut;
+          descente.details.paiement_type_paiement = row.paiement_type_paiement;
+          descente.details.paiement_montant_reste = row.paiement_montant_reste;
+          descente.details.paiement_statut = row.paiement_statut;
+          
         }
       });
       

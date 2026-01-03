@@ -1,13 +1,12 @@
 const pool = require("../config/db.js");
-
 // Modèle pour les statistiques du dashboard Descentes
 module.exports = {
-  
+ 
   // 1. Statistiques des Descentes et PV par mois + Totaux Globaux
   getMonthlyStats: async () => {
     // Requête pour le détail mensuel (Année en cours)
     const queryMensuel = `
-      SELECT 
+      SELECT
         TO_CHAR(date_descente, 'Mon') as month,
         EXTRACT(MONTH FROM date_descente) as month_num,
         COUNT(*) as total_descentes,
@@ -18,37 +17,51 @@ module.exports = {
       GROUP BY 1, 2
       ORDER BY month_num;
     `;
-
     // Requête pour la somme totale absolue (Toute la base de données)
     const queryTotalGlobal = `
-      SELECT 
+      SELECT
         COUNT(*) as total_descentes_global,
         COUNT(NULLIF(n_pv_pat, '')) as total_pv_pat_global,
         COUNT(NULLIF(n_fifafi, '')) as total_fifafi_global
       FROM "Descentes";
     `;
-    
+    // Requête SELECT pour récupérer les données détaillées selon la condition mensuelle
+    const queryMensuelDetails = `
+      SELECT *
+      FROM "Descentes"
+      WHERE date_descente >= DATE_TRUNC('year', CURRENT_DATE)
+      ORDER BY date_descente;
+    `;
+    // Requête SELECT pour récupérer les données détaillées selon la condition globale
+    const queryGlobalDetails = `
+      SELECT *
+      FROM "Descentes"
+      ORDER BY date_descente;
+    `;
+   
     try {
-      // Exécution simultanée des deux requêtes
-      const [mensuelRes, globalRes] = await Promise.all([
+      // Exécution simultanée des requêtes
+      const [mensuelRes, globalRes, mensuelDetailsRes, globalDetailsRes] = await Promise.all([
         pool.query(queryMensuel),
-        pool.query(queryTotalGlobal)
+        pool.query(queryTotalGlobal),
+        pool.query(queryMensuelDetails),
+        pool.query(queryGlobalDetails)
       ]);
-
       return {
         mensuel: mensuelRes.rows,
-        global: globalRes.rows[0] // Retourne un objet unique avec les totaux
+        global: globalRes.rows[0], // Retourne un objet unique avec les totaux
+        mensuelDetails: mensuelDetailsRes.rows,
+        globalDetails: globalDetailsRes.rows
       };
     } catch (error) {
       console.error("❌ Erreur SQL getMonthlyStats:", error);
       throw error;
     }
   },
-
 getInfractionStats: async () => {
     // 1. Requête pour les détails par mois
     const queryMensuel = `
-      SELECT 
+      SELECT
         TO_CHAR(date_descente, 'Mon') AS month,
         EXTRACT(MONTH FROM date_descente) as month_num,
         COUNT(*) FILTER (WHERE array_to_string(infraction, ',') ILIKE '%Remblai Illicite%') AS remblai_illicite,
@@ -60,10 +73,9 @@ getInfractionStats: async () => {
       GROUP BY 1, 2
       ORDER BY month_num;
     `;
-
     // 2. Requête pour la SOMME GLOBALE dans toute la base
     const queryGlobal = `
-      SELECT 
+      SELECT
         COUNT(*) FILTER (WHERE array_to_string(infraction, ',') ILIKE '%Remblai Illicite%') AS total_remblai,
         COUNT(*) FILTER (WHERE array_to_string(infraction, ',') ILIKE '%construction sur remblai Illicite%') AS total_construction,
         COUNT(*) FILTER (WHERE array_to_string(infraction, ',') ILIKE '%Remblai Illicite récent%') AS total_recent,
@@ -71,16 +83,31 @@ getInfractionStats: async () => {
         COUNT(*) AS total_descentes_global
       FROM "Descentes";
     `;
-
+    // Requête SELECT pour récupérer les données détaillées selon la condition mensuelle
+    const queryMensuelDetails = `
+      SELECT *
+      FROM "Descentes"
+      WHERE date_descente >= DATE_TRUNC('year', CURRENT_DATE)
+      ORDER BY date_descente;
+    `;
+    // Requête SELECT pour récupérer les données détaillées selon la condition globale
+    const queryGlobalDetails = `
+      SELECT *
+      FROM "Descentes"
+      ORDER BY date_descente;
+    `;
     try {
-      const [mensuelRes, globalRes] = await Promise.all([
+      const [mensuelRes, globalRes, mensuelDetailsRes, globalDetailsRes] = await Promise.all([
         pool.query(queryMensuel),
-        pool.query(queryGlobal)
+        pool.query(queryGlobal),
+        pool.query(queryMensuelDetails),
+        pool.query(queryGlobalDetails)
       ]);
-
       return {
         par_mois: mensuelRes.rows,
-        cumul_general: globalRes.rows[0] // On renvoie l'objet unique du total
+        cumul_general: globalRes.rows[0], // On renvoie l'objet unique du total
+        mensuelDetails: mensuelDetailsRes.rows,
+        globalDetails: globalDetailsRes.rows
       };
     } catch (error) {
       console.error("❌ Erreur SQL getInfractionStats:", error);
@@ -90,15 +117,15 @@ getInfractionStats: async () => {
   getZoneStats: async () => {
     // Requête Mensuelle (CUA vs Périphérie)
     const queryMensuel = `
-      SELECT 
+      SELECT
         TO_CHAR(date_descente, 'Mon') as month,
         EXTRACT(MONTH FROM date_descente) as month_num,
         COUNT(*) FILTER (WHERE district IN (
-          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement', 
+          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement',
           '4e Arrondissement', '5e Arrondissement', '6e Arrondissement'
         )) as total_cua,
         COUNT(*) FILTER (WHERE district NOT IN (
-          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement', 
+          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement',
           '4e Arrondissement', '5e Arrondissement', '6e Arrondissement'
         )) as total_peripherie,
         COUNT(*) as total_global
@@ -107,31 +134,45 @@ getInfractionStats: async () => {
       GROUP BY 1, 2
       ORDER BY month_num;
     `;
-
     // Requête Somme Globale (Toute la base)
     const queryGlobal = `
-      SELECT 
+      SELECT
         COUNT(*) FILTER (WHERE district IN (
-          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement', 
+          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement',
           '4e Arrondissement', '5e Arrondissement', '6e Arrondissement'
         )) as cua_global,
         COUNT(*) FILTER (WHERE district NOT IN (
-          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement', 
+          '1er Arrondissement', '2e Arrondissement', '3e Arrondissement',
           '4e Arrondissement', '5e Arrondissement', '6e Arrondissement'
         )) as peripherie_global,
         COUNT(*) as somme_absolue
       FROM "Descentes";
     `;
-
+    // Requête SELECT pour récupérer les données détaillées selon la condition mensuelle
+    const queryMensuelDetails = `
+      SELECT *
+      FROM "Descentes"
+      WHERE date_descente >= DATE_TRUNC('year', CURRENT_DATE)
+      ORDER BY date_descente;
+    `;
+    // Requête SELECT pour récupérer les données détaillées selon la condition globale
+    const queryGlobalDetails = `
+      SELECT *
+      FROM "Descentes"
+      ORDER BY date_descente;
+    `;
     try {
-      const [mensuelRes, globalRes] = await Promise.all([
+      const [mensuelRes, globalRes, mensuelDetailsRes, globalDetailsRes] = await Promise.all([
         pool.query(queryMensuel),
-        pool.query(queryGlobal)
+        pool.query(queryGlobal),
+        pool.query(queryMensuelDetails),
+        pool.query(queryGlobalDetails)
       ]);
-
       return {
         mensuel: mensuelRes.rows,
-        global: globalRes.rows[0]
+        global: globalRes.rows[0],
+        mensuelDetails: mensuelDetailsRes.rows,
+        globalDetails: globalDetailsRes.rows
       };
     } catch (error) {
       console.error("❌ Erreur SQL getZoneStats:", error);
@@ -141,28 +182,26 @@ getInfractionStats: async () => {
   getDistrictStats: async () => {
     // Liste des 14 districts de référence
     const districtsReference = [
-      '1er Arrondissement', '2e Arrondissement', '3e Arrondissement', 
+      '1er Arrondissement', '2e Arrondissement', '3e Arrondissement',
       '4e Arrondissement', '5e Arrondissement', '6e Arrondissement',
-      'Ambohidratrimo', 'Andramasina', 'Anjozorobe', 'Ankazobe', 
-      'Antananarivo Atsimondrano', 'Antananarivo Avaradrano', 
+      'Ambohidratrimo', 'Andramasina', 'Anjozorobe', 'Ankazobe',
+      'Antananarivo Atsimondrano', 'Antananarivo Avaradrano',
       'Arivonimamo', 'Manjakandriana'
     ];
-
     // Construction de la liste pour SQL
     const districtsList = districtsReference.map(d => `('${d}')`).join(', ');
-
     // A. Détail mensuel par district (incluant les zéros)
-    // Note: Pour le mensuel avec zéros, c'est plus complexe, 
+    // Note: Pour le mensuel avec zéros, c'est plus complexe,
     // nous allons ici assurer que le TOTAL GLOBAL inclut bien tout le monde.
-    
+   
     const queryGlobal = `
       WITH RefDistricts AS (
         SELECT * FROM (VALUES ${districtsList}) AS t(district_name)
       )
-      SELECT 
+      SELECT
         rd.district_name as district,
         COUNT(d.id) as total_global, -- On compte l'ID de la table Descentes
-        CASE 
+        CASE
           WHEN rd.district_name LIKE '%Arrondissement%' THEN 'CUA'
           ELSE 'Périphérie'
         END as zone
@@ -171,10 +210,9 @@ getInfractionStats: async () => {
       GROUP BY rd.district_name
       ORDER BY total_global DESC;
     `;
-
     // B. Détail mensuel (Année en cours)
     const queryMensuel = `
-      SELECT 
+      SELECT
         TO_CHAR(date_descente, 'Mon') as month,
         EXTRACT(MONTH FROM date_descente) as month_num,
         district,
@@ -184,21 +222,35 @@ getInfractionStats: async () => {
       GROUP BY 1, 2, 3
       ORDER BY month_num, nombre_descentes DESC;
     `;
-
+    // Requête SELECT pour récupérer les données détaillées selon la condition mensuelle
+    const queryMensuelDetails = `
+      SELECT *
+      FROM "Descentes"
+      WHERE date_descente >= DATE_TRUNC('year', CURRENT_DATE)
+      ORDER BY date_descente;
+    `;
+    // Requête SELECT pour récupérer les données détaillées selon la condition globale
+    const queryGlobalDetails = `
+      SELECT *
+      FROM "Descentes"
+      ORDER BY date_descente;
+    `;
     try {
-      const [mensuelRes, globalRes] = await Promise.all([
+      const [mensuelRes, globalRes, mensuelDetailsRes, globalDetailsRes] = await Promise.all([
         pool.query(queryMensuel),
-        pool.query(queryGlobal)
+        pool.query(queryGlobal),
+        pool.query(queryMensuelDetails),
+        pool.query(queryGlobalDetails)
       ]);
-
       return {
         mensuelParDistrict: mensuelRes.rows,
-        totalParDistrict: globalRes.rows // Cette liste contient forcément les 14 districts
+        totalParDistrict: globalRes.rows, // Cette liste contient forcément les 14 districts
+        mensuelDetails: mensuelDetailsRes.rows,
+        globalDetails: globalDetailsRes.rows
       };
     } catch (error) {
       console.error("❌ Erreur SQL getDistrictStats:", error);
       throw error;
     }
   },
-
 };
